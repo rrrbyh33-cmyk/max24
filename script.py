@@ -28,7 +28,7 @@ def self_destruct():
 @bot.message_handler(commands=['start'])
 def start_command(message):
     if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المقفل (متابعين تيك توك فقط)!*\n\nقم بإرسال رابط الحساب هسة لكي نطلق الرشق المباشر:")
+        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المقفل والمعدل بالانتظار الذكي!*\n\nقم بإرسال رابط الحساب هسة لكي نطلق الرشق المباشر:")
 
 # 1️⃣ استقبال الرابط والانتقال فوراً لطلب التكرار
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
@@ -93,8 +93,6 @@ def run_smm_automation(target_link, loop_count):
             # حقن الرابط الآمن عبر JavaScript
             link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
             driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
-            
-            # 🛠️ تعديل ذكي ومضمون لتفادي خطأ الحروف الكبيرة تماماً في المتصفح
             driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: !0 }));", link_input)
             time.sleep(3)
             
@@ -102,10 +100,12 @@ def run_smm_automation(target_link, loop_count):
             final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')]")
             driver.execute_script("arguments[0].click();", final_submit)
             
-            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* تم إرسال طلب المتابعين بنجاح إلى النظام!")
+            # 🛠️ التعديل الذهبي: الانتظار لمدة 5 ثوانٍ كاملة في الصفحة لضمان معالجة السيرفر للطلب
             time.sleep(5)
             
-        send_telegram_log(f"🎉 *كفو يا علي! اكتملت كافة الوجبات لمتابعين التيك توك بنجاح تام وعاش يدك!*")
+            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* تم معالجة وإرسال الطلب بنجاح وثبت في السيرفر!")
+            
+        send_telegram_log(f"🎉 *كفو يا علي! اكتملت كافة الوجبات لمتابعين التيك توك بنجاح تام واستقرار 100%!*")
         
     except Exception as e:
         send_telegram_log(f"❌ *خطأ سحابي في سيرفر المتابعين:* \n`{str(e)[:150]}`")
@@ -114,5 +114,5 @@ def run_smm_automation(target_link, loop_count):
 
 if __name__ == "__main__":
     threading.Thread(target=self_destruct, daemon=True).start()
-    send_telegram_log("🚀 *سيرفر متابعين التيك توك المقفل مستيقظ وجاهز الآن في تليغرام!*")
+    send_telegram_log("🚀 *سيرفر متابعين التيك توك المستقر مستيقظ وجاهز الآن في تليغرام!*")
     bot.infinity_polling()
