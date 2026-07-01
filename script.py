@@ -47,17 +47,16 @@ def self_destruct():
 
 def wait_for_page_full_load(driver, timeout=TIMEOUT_CONFIG['page_load']):
     """
-    انتظار تحميل الصفحة بشكل كامل مع جميع العناصر
+    انتظار تحميل الصفحة بشكل كامل
     """
     try:
         send_telegram_log("⏳ *جاري انتظار تحميل الصفحة...*")
         
-        # انتظار تحميل الصفحة
         WebDriverWait(driver, timeout).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
         
-        # التمرير للأسفل لتحميل المحتوى الديناميكي
+        # التمرير للأسفل
         send_telegram_log("📜 *جاري التمرير لتحميل المحتوى...*")
         for scroll in range(3):
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -72,157 +71,115 @@ def wait_for_page_full_load(driver, timeout=TIMEOUT_CONFIG['page_load']):
         send_telegram_log(f"⚠️ *خطأ في تحميل الصفحة: {str(e)[:50]}*")
         return False
 
-def find_services_by_all_methods(driver):
+def find_tiktok_button_after_text(driver):
     """
-    البحث عن الخدمات باستخدام جميع الطرق الممكنة
+    البحث عن زر الطلب بعد العثور على النص
     """
-    services = []
-    
-    # الطريقة 1: البحث عن النصوص المحددة
-    try:
-        send_telegram_log("🔍 *البحث عن النصوص المحددة...*")
-        keywords = [
-            "бесплатных подписчиков",
-            "бесплатных лайков",
-            "бесплатных просмотров",
-            "бесплатных комментариев"
-        ]
-        
-        for keyword in keywords:
-            elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{keyword}')]")
-            for element in elements:
-                if element.is_displayed():
-                    services.append(element)
-    except:
-        pass
-    
-    # الطريقة 2: البحث عن أي عنصر يحتوي على "Заказать"
-    try:
-        send_telegram_log("🔍 *البحث عن أزرار 'Заказать'...*")
-        buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
-        for button in buttons:
-            if button.is_displayed() and button.is_enabled():
-                services.append(button)
-    except:
-        pass
-    
-    # الطريقة 3: البحث عن البطاقات
-    try:
-        send_telegram_log("🔍 *البحث عن البطاقات...*")
-        xpath_patterns = [
-            "//div[contains(@class, 'service')]",
-            "//div[contains(@class, 'card')]",
-            "//div[contains(@class, 'item')]",
-            "//div[contains(@class, 'block')]",
-            "//div[contains(@class, 'offer')]",
-            "//div[contains(@class, 'product')]",
-            "//div[contains(@style, 'service')]",
-        ]
-        
-        for pattern in xpath_patterns:
-            elements = driver.find_elements(By.XPATH, pattern)
-            for element in elements:
-                if element.is_displayed() and element.text and len(element.text) > 20:
-                    services.append(element)
-    except:
-        pass
-    
-    # إزالة التكرارات
-    unique_services = []
-    seen = set()
-    for service in services:
-        try:
-            service_text = service.text[:50] if service.text else ""
-            if service_text and service_text not in seen:
-                seen.add(service_text)
-                unique_services.append(service)
-        except:
-            continue
-    
-    send_telegram_log(f"📊 *تم العثور على {len(unique_services)} عنصر خدمة*")
-    return unique_services
-
-def find_tiktok_followers_ultimate(driver):
-    """
-    الطريقة النهائية للبحث عن TikTok متابعين
-    """
-    # 1. البحث عن النص الدقيق
+    # النصوص المطلوبة
     target_texts = [
-        "100 бесплатных подписчиков Ток",
+        "бесплатных 10 подписчиков TikTok",
+        "бесплатные подписчики TikTok",
+        "подписчики TikTok",
         "10 бесплатных подписчиков Тик Ток",
         "бесплатных подписчиков Тик Ток",
-        "подписчиков Тик Ток",
-        "подписчиков Ток"
+        "100 бесплатных подписчиков Ток"
     ]
     
     for text in target_texts:
         try:
+            # البحث عن العنصر الذي يحتوي على النص
             elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{text}')]")
+            
             for element in elements:
                 if element.is_displayed():
                     send_telegram_log(f"✅ *تم العثور على النص: {text[:30]}...*")
                     
-                    # البحث عن زر الطلب في نفس البطاقة
+                    # محاولة 1: البحث عن زر في نفس البطاقة
                     try:
-                        # البحث عن البطاقة الأب
-                        parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item')]")
+                        parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item') or contains(@class, 'block')]")
                         if parent:
+                            # البحث عن زر في البطاقة
                             try:
                                 button = parent.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
+                                send_telegram_log("✅ *تم العثور على زر الطلب في البطاقة!*")
                                 return button
                             except:
+                                # البحث عن أي زر في البطاقة
                                 buttons = parent.find_elements(By.TAG_NAME, "button")
                                 if buttons:
+                                    send_telegram_log("✅ *تم العثور على زر في البطاقة!*")
                                     return buttons[0]
                     except:
-                        # البحث عن زر قريب
-                        try:
-                            button = element.find_element(By.XPATH, "./following::*[contains(text(), 'Заказать')][1]")
+                        pass
+                    
+                    # محاولة 2: البحث عن زر قريب
+                    try:
+                        button = element.find_element(By.XPATH, "./following::*[contains(text(), 'Заказать')][1]")
+                        if button.is_displayed() and button.is_enabled():
+                            send_telegram_log("✅ *تم العثور على زر طلب قريب!*")
                             return button
-                        except:
-                            pass
+                    except:
+                        pass
+                    
+                    # محاولة 3: البحث عن زر في نفس المستوى
+                    try:
+                        parent = element.find_element(By.XPATH, "./..")
+                        button = parent.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
+                        if button.is_displayed() and button.is_enabled():
+                            send_telegram_log("✅ *تم العثور على زر طلب في نفس المستوى!*")
+                            return button
+                    except:
+                        pass
+                    
+                    # محاولة 4: البحث عن أي زر "Заказать" في الصفحة
+                    try:
+                        buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
+                        for btn in buttons:
+                            if btn.is_displayed() and btn.is_enabled():
+                                # التحقق من أن الزر ليس في Instagram
+                                parent_text = ""
+                                try:
+                                    parent = btn.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
+                                    if parent:
+                                        parent_text = parent.text.lower()
+                                except:
+                                    pass
+                                
+                                if "инстаграм" not in parent_text and "instagram" not in parent_text:
+                                    send_telegram_log("✅ *تم العثور على زر طلب في الصفحة!*")
+                                    return btn
+                    except:
+                        pass
         except:
             continue
     
-    # 2. البحث عن أي TikTok
+    return None
+
+def find_any_button(driver):
+    """
+    البحث عن أي زر في الصفحة (كحل أخير)
+    """
     try:
-        elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Тик Ток') or contains(text(), 'Ток')]")
-        for element in elements:
-            if element.is_displayed():
-                parent_text = ""
-                try:
-                    parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
-                    if parent:
-                        parent_text = parent.text.lower()
-                except:
-                    pass
-                
-                if "подписчиков" in parent_text or "подписчик" in parent_text:
-                    try:
-                        parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
-                        button = parent.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-                        return button
-                    except:
-                        pass
+        # البحث عن جميع الأزرار
+        buttons = driver.find_elements(By.TAG_NAME, "button")
+        for btn in buttons:
+            if btn.is_displayed() and btn.is_enabled():
+                btn_text = btn.text.lower()
+                if "заказать" in btn_text or "подписаться" in btn_text or "получить" in btn_text:
+                    send_telegram_log("✅ *تم العثور على زر بديل!*")
+                    return btn
     except:
         pass
     
-    # 3. البحث عن أي زر "Заказать" (كحل أخير)
+    # البحث عن أي عنصر قابل للنقر
     try:
-        buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
-        for button in buttons:
-            if button.is_displayed() and button.is_enabled():
-                # التحقق من أن الزر ليس في Instagram
-                parent_text = ""
-                try:
-                    parent = button.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
-                    if parent:
-                        parent_text = parent.text.lower()
-                except:
-                    pass
-                
-                if "инстаграм" not in parent_text and "instagram" not in parent_text:
-                    return button
+        elements = driver.find_elements(By.XPATH, "//a | //div[contains(@class, 'btn')] | //span[contains(@class, 'btn')]")
+        for element in elements:
+            if element.is_displayed() and element.is_enabled():
+                text = element.text.lower()
+                if "заказать" in text or "подписаться" in text or "получить" in text:
+                    send_telegram_log("✅ *تم العثور على عنصر قابل للنقر!*")
+                    return element
     except:
         pass
     
@@ -311,91 +268,75 @@ def run_smm_automation(target_link, loop_count):
             driver.set_page_load_timeout(TIMEOUT_CONFIG['page_load'])
             driver.get(TARGET_URL)
             
-            # انتظار تحميل الصفحة مع التمرير
+            # انتظار تحميل الصفحة
             wait_for_page_full_load(driver)
             
             # عرض محتوى الصفحة للتشخيص
             try:
-                page_text = driver.find_element(By.TAG_NAME, "body").text[:500]
+                page_text = driver.find_element(By.TAG_NAME, "body").text[:300]
                 send_telegram_log(f"📄 *محتوى الصفحة:* `{page_text[:200]}...`")
             except:
                 pass
             
-            # 🎯 البحث عن خدمة TikTok متابعين
+            # 🎯 البحث عن زر TikTok
             order_button = None
             
-            # محاولة 1: البحث المباشر
+            # محاولة 1: البحث عن الزر بعد العثور على النص
             try:
-                send_telegram_log("🔍 *جاري البحث عن خدمة TikTok متابعين...*")
-                order_button = find_tiktok_followers_ultimate(driver)
+                send_telegram_log("🔍 *جاري البحث عن زر الطلب بعد العثور على النص...*")
+                order_button = find_tiktok_button_after_text(driver)
                 if order_button:
-                    send_telegram_log("✅ *تم العثور على الخدمة المطلوبة!*")
+                    send_telegram_log("✅ *تم العثور على زر الطلب!*")
             except Exception as e:
                 send_telegram_log(f"⚠️ *خطأ في البحث: {str(e)[:50]}*")
             
-            # محاولة 2: البحث عن جميع الخدمات واختيار الأولى
+            # محاولة 2: البحث عن أي زر في الصفحة
             if not order_button:
                 try:
-                    send_telegram_log("🔍 *جاري البحث عن جميع الخدمات...*")
-                    services = find_services_by_all_methods(driver)
-                    if services:
-                        # البحث عن أول خدمة تحتوي على "Тик Ток" أو "Ток"
-                        for service in services:
-                            try:
-                                service_text = service.text.lower()
-                                if "тик ток" in service_text or "ток" in service_text:
-                                    if "подписчиков" in service_text:
-                                        try:
-                                            button = service.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-                                            order_button = button
-                                            send_telegram_log("✅ *تم العثور على خدمة TikTok!*")
-                                            break
-                                        except:
-                                            pass
-                            except:
-                                continue
+                    send_telegram_log("🔍 *جاري البحث عن أي زر في الصفحة...*")
+                    order_button = find_any_button(driver)
                 except:
                     pass
             
-            # محاولة 3: البحث عن أي زر "Заказать"
+            # محاولة 3: البحث المباشر عن "Заказать"
             if not order_button:
                 try:
-                    send_telegram_log("🔍 *جاري البحث عن أي زر طلب...*")
+                    send_telegram_log("🔍 *جاري البحث المباشر عن 'Заказать'...*")
                     buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
                     for btn in buttons:
                         if btn.is_displayed() and btn.is_enabled():
                             order_button = btn
-                            send_telegram_log("✅ *تم العثور على زر طلب*")
+                            send_telegram_log("✅ *تم العثور على زر 'Заказать'!*")
                             break
                 except:
                     pass
             
             if not order_button:
-                send_telegram_log("❌ *لم يتم العثور على أي خدمة!*")
+                send_telegram_log("❌ *لم يتم العثور على أي زر!*")
                 
                 # حفظ صورة للخطأ
                 try:
                     error_screenshot = f"error_{i+1}.png"
                     driver.save_screenshot(error_screenshot)
                     with open(error_screenshot, "rb") as photo:
-                        bot.send_photo(ADMIN_ID, photo, caption="❌ *لم نجد أي خدمة في الصفحة!*")
+                        bot.send_photo(ADMIN_ID, photo, caption="❌ *لم نجد أي زر في الصفحة!*")
                     os.remove(error_screenshot)
                 except:
                     pass
                 
-                raise Exception("لم يتم العثور على أي خدمة")
+                raise Exception("لم يتم العثور على أي زر")
             
-            # النقر على الخدمة
+            # النقر على الزر
             try:
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", order_button)
                 time.sleep(2)
                 driver.execute_script("arguments[0].click();", order_button)
-                send_telegram_log("✅ *تم النقر على الخدمة*")
+                send_telegram_log("✅ *تم النقر على الزر*")
             except:
                 try:
                     order_button.click()
                 except:
-                    raise Exception("فشل النقر على الخدمة")
+                    raise Exception("فشل النقر على الزر")
             
             # انتظار فتح النافذة الجديدة
             time.sleep(8)
