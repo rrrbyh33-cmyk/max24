@@ -41,7 +41,8 @@ try:
     driver = webdriver.Chrome(options=chrome_options)
     
     for i in range(LOOP_COUNT):
-        send_telegram_log(f"🔄 [الوجبة {i+1} من {loop_count}]: جاري فتح الموقع الروسي...")
+        # تم تصحيح الكلمة هنا إلى LOOP_COUNT ليعبر السكربت بنجاح
+        send_telegram_log(f"🔄 [الوجبة {i+1} من {LOOP_COUNT}]: جاري فتح الموقع الروسي...")
         driver.get(TARGET_URL)
         time.sleep(12)
         
@@ -50,7 +51,7 @@ try:
         driver.execute_script("arguments[0].click();", order_button)
         
         send_telegram_log(f"⏱️ [الوجبة {i+1}]: تم فتح صفحة الخدمة بنجاح. جاري انتظار الـ 5 دقائق الإجبارية للموقع...")
-        time.sleep(300) # الانتظار البرمجي الآمن
+        time.sleep(300) # الانتظار البرمجي الآمن للموقع الروسي
         
         link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
         link_input.clear()
@@ -60,7 +61,7 @@ try:
         final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')]")
         driver.execute_script("arguments[0].click();", final_submit)
         
-        send_telegram_log(f"⏳ [الوجبة {i+1}]: تم إرسال الطلب بنجاح والبدء بالوجبة التالية...")
+        send_telegram_log(f"⏳ [الوجبة {i+1}]: تم إرسال الطلب بنجاح وبدء الانتظار للوجبة التالية...")
         time.sleep(5)
         
     send_telegram_log(f"🎉 كفو يا علي! اكتملت الأتمتة السحابية بالكامل، وتم رشق الحساب {LOOP_COUNT} مرات بنجاح تام!")
