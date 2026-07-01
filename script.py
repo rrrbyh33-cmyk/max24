@@ -12,7 +12,7 @@ ADMIN_ID = 6817750462
 TARGET_URL = "https://smmnakrutka.ru/#bespli"
 
 bot = telebot.TeleBot(BOT_TOKEN)
-user_states = {}  # لحفظ روابط المستخدم مؤقتاً
+user_states = {}  # لحفظ البيانات المؤقتة (الرابط، الخدمة، التكرار)
 
 def send_telegram_log(text):
     try:
@@ -22,23 +22,21 @@ def send_telegram_log(text):
 
 # ⏰ مؤقت التدمير الذاتي (30 دقيقة) لحماية دقائق جيت هاب المجانية
 def self_destruct():
-    time.sleep(1800)  # 30 دقيقة بالثواني
-    send_telegram_log("⚠️ *انتهت الـ 30 دقيقة المخصصة للسيرفر السحابي.*\nتم إيقاف تشغيل البوت تلقائياً لحفظ دقائقك المجانية. يمكنك إعادة تشغيله من GitHub في أي وقت!")
+    time.sleep(1800)
+    send_telegram_log("⚠️ *انتهت الـ 30 دقيقة المخصصة للسيرفر السحابي.*\nتم إيقاف تشغيل البوت تلقائياً لحفظ دقائقك المجانية.")
     os._exit(0)
 
-# رسالة ترحيبية عند الضغط على start
 @bot.message_handler(commands=['start'])
 def start_command(message):
     if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "👋 *أهلاً بك يا علي في لوحة التحكم السحابية المباشرة!*\n\nقم بإرسال رابط الحساب أو المنشور (انستغرام أو تيك توك) هسة مباشرة لكي نبدأ الرشق السحابي المطور.")
+        bot.send_message(ADMIN_ID, "👋 *أهلاً بك يا علي في لوحة التحكم السحابية المباشرة!*\n\nقم بإرسال رابط الحساب أو المنشور هسة لكي نبدأ:")
 
-# استقبال الرابط وتخزينه
+# 1️⃣ استقبال الرابط
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and (message.text.startswith('http') or 'tiktok.com' in message.text or 'instagram.com' in message.text))
 def handle_link(message):
     url = message.text.strip()
     user_states[ADMIN_ID] = {'link': url}
     
-    # إنشاء أزرار اختيار الخدمة داخل التليغرام
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("👥 متابعين انستغرام (Instagram Followers)", callback_data="ig_followers"),
@@ -46,37 +44,39 @@ def handle_link(message):
         types.InlineKeyboardButton("👁️ مشاهدات تيك توك (TikTok Views)", callback_data="tt_views"),
         types.InlineKeyboardButton("👥 متابعين تيك توك (TikTok Followers)", callback_data="tt_followers")
     )
-    bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط بنجاح!*\nاختر الآن الخدمة المطلوبة من الأزرار أدناه:", reply_markup=markup)
+    bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط!*\nاختر الآن الخدمة المطلوبة من الأزرار أدناه:", reply_markup=markup)
 
-# معالجة الضغط على أزرار الخدمات وبدء الرشق السحابي بالخلفية
+# 2️⃣ معالجة زر الخدمة وطلب عدد التكرارات
 @bot.callback_query_handler(func=lambda call: call.message.chat.id == ADMIN_ID)
 def callback_inline(call):
     if ADMIN_ID not in user_states:
         bot.send_message(ADMIN_ID, "❌ حدث خطأ، يرجى إرسال الرابط من جديد.")
         return
     
-    target_link = user_states[ADMIN_ID]['link']
-    service_type = call.data
-    
-    # حذف الأزرار القديمة لإعلام المستخدم ببدء المعالجة
+    user_states[ADMIN_ID]['service'] = call.data
     bot.edit_message_reply_markup(chat_id=ADMIN_ID, message_id=call.message.message_id, reply_markup=None)
     
-    # تشغيل عملية الرشق في Thread منفصل لكي يظل البوت مستيقظاً ويستقبل رسائل أخرى!
-    threading.Thread(target=run_smm_automation, args=(target_link, service_type)).start()
+    msg = bot.send_message(ADMIN_ID, "🔢 *كم وجبة رشق تريد تكرارها لهذا الرابط؟*\nأرسل الرقم هسة مباشرة (مثلاً: `1` أو `3`):")
+    bot.register_next_step_handler(msg, handle_loop_count)
 
-def run_smm_automation(target_link, service_type):
-    # 🛠️ قائمة ذكية بالصيغ المختلفة للتغلب على تحديثات الموقع وحساسية الحروف
-    possible_texts = []
-    if service_type == "ig_followers":
-        possible_texts = ["подписчиков в Инстаграм", "Подписчики в Инстаграм", "Подписчиков в Инстаграм", "подписчики в инстаграм"]
-    elif service_type == "ig_views":
-        possible_texts = ["просмотров в Инстаграм", "Просмотры в Инстаграм", "Просмотров в Инстаграм", "просмотры в инстаграм"]
-    elif service_type == "tt_views":
-        possible_texts = ["просмотров в Тик Ток", "Просмотры в Тик Ток", "Просмотров в Тик Ток", "просмотры в тик ток", "Просмотры в ТТ"]
-    elif service_type == "tt_followers":
-        possible_texts = ["подписчиков в Тик Ток", "Подписчики в Тик Ток", "Подписчиков в Тик Ток", "подписчики в тик ток", "Подписчики в ТТ"]
+# 3️⃣ استلام عدد التكرارات وبدء الأتمتة فوراً بالخلفية
+def handle_loop_count(message):
+    try:
+        loop_count = int(message.text.strip())
+        if loop_count < 1:
+            loop_count = 1
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ رسالة غير صحيحة، تم تعيين عدد التكرارات تلقائياً إلى وجبة واحدة `1`.")
+        loop_count = 1
+        
+    user_states[ADMIN_ID]['loops'] = loop_count
+    target_link = user_states[ADMIN_ID]['link']
+    service_type = user_states[ADMIN_ID]['service']
+    
+    threading.Thread(target=run_smm_automation, args=(target_link, service_type, loop_count)).start()
 
-    send_telegram_log(f"🔄 *جاري فتح المتصفح السحابي وضخ الهوية الحقيقية...*\n🔗 المستهدف: {target_link}")
+def run_smm_automation(target_link, service_type, loop_count):
+    send_telegram_log(f"🚀 *تم بدء الرشق السحابي المتكرر!*\n🔗 المستهدف: {target_link}\n🔢 إجمالي الوجبات المطلوبة: {loop_count}")
     
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
@@ -88,39 +88,63 @@ def run_smm_automation(target_link, service_type):
     driver = None
     try:
         driver = webdriver.Chrome(options=chrome_options)
-        driver.get(TARGET_URL)
-        time.sleep(15)
         
-        # 🔄 حلقة ذكية لتجربة كافة صيغ النصوص المتاحة حتى نجد الزر الصحيح
-        order_button = None
-        for text_variant in possible_texts:
-            try:
-                xpath_selector = f"//*[contains(text(), '{text_variant}')]/..//*[contains(text(), 'Заказать')] | //*[contains(text(), '{text_variant}')]/ancestor::div//*[contains(text(), 'Заказать')]"
-                order_button = driver.find_element(By.XPATH, xpath_selector)
-                if order_button:
-                    break
-            except:
-                continue
+        for i in range(loop_count):
+            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فحص كروت الصفحة سحابياً...")
+            driver.get(TARGET_URL)
+            time.sleep(15)
+            
+            # 🛠️ البحث عن طريق الكرت بالكامل (div) الذي يحتوي على زر الطلب والنصوص معاً
+            cards = driver.find_elements(By.XPATH, "//div[contains(., 'Заказать')]")
+            order_button = None
+            
+            for card in cards:
+                try:
+                    card_text = card.text.lower()
+                except:
+                    continue
                 
-        if not order_button:
-            raise Exception("لم يتم العثور على زر الخدمة؛ قد يكون الموقع غير الكلمات تماماً.")
+                # التحقق المرن من الكلمات المفتاحية داخل الكرت الواحد
+                is_match = False
+                if service_type == "ig_followers" and "инстаграм" in card_text and "подписч" in card_text:
+                    is_match = True
+                elif service_type == "ig_views" and "инстаграм" in card_text and ("просмотр" in card_text or "лайк" in card_text):
+                    is_match = True
+                elif service_type == "tt_views" and ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "просмотр" in card_text:
+                    is_match = True
+                elif service_type == "tt_followers" and ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "подписч" in card_text:
+                    is_match = True
+                    
+                if is_match:
+                    try:
+                        # العثور على الزر الخاص بهذا الكرت المحدد حصراً
+                        order_button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(., 'Заказать')]")
+                        break
+                    except:
+                        continue
+                    
+            if not order_button:
+                raise Exception("لم يتم العثور على كرت الخدمة المتوافق؛ يرجى التأكد من اختيار الخدمة الصحيحة.")
 
-        driver.execute_script("arguments[0].click();", order_button)
-        
-        send_telegram_log("⏱️ *تم العبور لصفحة الخدمة بنجاح.*\nجاري الآن انتظار الـ 5 دقائق الإجبارية للموقع... سأخبرك فور انتهائها.")
-        time.sleep(300)
-        
-        # الحل الجذري لخطأ Element not interactable (الحقن المباشر عبر جافا سكربت)
-        link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
-        driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
-        time.sleep(3)
-        
-        # الضغط على زر الإطلاق النهائي عبر جافا سكربت أيضاً لتجنب أي حجب
-        final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')]")
-        driver.execute_script("arguments[0].click();", final_submit)
-        
-        send_telegram_log(f"🎉 *كفو يا علي! تم إرسال طلب الرشق بنجاح سحابي تام!*\n🎯 الرابط: {target_link}\n\n🤖 أنا جاهز الآن لاستقبال رابط آخر!")
+            driver.execute_script("arguments[0].click();", order_button)
+            
+            send_telegram_log(f"⏱️ *[الوجبة {i+1} من {loop_count}]:* تم العبور لصفحة الخدمة بنجاح.\nجاري انتظار الـ 5 دقائق الإجبارية للموقع...")
+            time.sleep(300)
+            
+            # حقن الرابط السحري عبر جافا سكربت لتفادي الحجب والمشاكل المرئية
+            link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
+            driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
+            time.sleep(3)
+            
+            # الضغط النهائي والإطلاق
+            final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')]")
+            driver.execute_script("arguments[0].click();", final_submit)
+            
+            send_telegram_log(f"⏳ *[الوجبة {i+1} من {loop_count}]:* تم إرسال طلب الرشق بنجاح سحابياً وعبر السيرفر!")
+            time.sleep(5)
+            
+        send_telegram_log(f"🎉 *كفو يا علي! اكتملت كافة الوجبات المطلوبة ({loop_count}) بنجاح تام وعاش يدك!*")
         
     except Exception as e:
         send_telegram_log(f"❌ *خطأ سحابي أثناء الرشق:* \n`{str(e)[:150]}`")
@@ -129,7 +153,6 @@ def run_smm_automation(target_link, service_type):
             driver.quit()
 
 if __name__ == "__main__":
-    # تشغيل مؤقت التدمير الذاتي بالخلفية
     threading.Thread(target=self_destruct, daemon=True).start()
-    send_telegram_log("🚀 *السيرفر السحابي الخارق مستيقظ الآن ويعمل بنجاح!*\nأرسل أي رابط في الشات وسأتولى الباقي.")
+    send_telegram_log("🚀 *السيرفر السحابي الخارق مستيقظ الآن للتحكم الكامل المتكرر!*\nأرسل أي رابط في الشات وسأتولى الباقي.")
     bot.infinity_polling()
