@@ -30,7 +30,7 @@ def start_command(message):
     if message.chat.id == ADMIN_ID:
         bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المقفل (متابعين تيك توك فقط)!*\n\nقم بإرسال رابط الحساب هسة لكي نطلق الرشق المباشر:")
 
-# 1️⃣ استقبال الرابط والانتقال فوراً لطلب التكرار (اختصاراً للوقت)
+# 1️⃣ استقبال الرابط والانتقال فوراً لطلب التكرار
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
 def handle_link(message):
     url = message.text.strip()
@@ -69,7 +69,6 @@ def run_smm_automation(target_link, loop_count):
             driver.get(TARGET_URL)
             time.sleep(15)
             
-            # 🎯 استراتيجية القفل المباشر: البحث عن الكرت الخاص بمتابعين التيك توك حصراً
             cards = driver.find_elements(By.XPATH, "//div[contains(., 'Заказать')]")
             order_button = None
             
@@ -77,7 +76,6 @@ def run_smm_automation(target_link, loop_count):
                 try: card_text = card.text.lower()
                 except: continue
                 
-                # فحص مباشر وصارم: يجب أن يحتوي الكرت على (متابعين) و (تيك توك) معاً
                 if ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "подписч" in card_text:
                     try:
                         order_button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(., 'Заказать')]")
@@ -85,9 +83,8 @@ def run_smm_automation(target_link, loop_count):
                     except: continue
             
             if not order_button:
-                raise Exception("لم يتم العثور على زر متابعين تيك توك؛ قد يكون الموقع تحت الصيانة أو غيّر التصميم.")
+                raise Exception("لم يتم العثور على زر متابعين تيك توك.")
 
-            # النقر والانتقال لصفحة الانتظار
             driver.execute_script("arguments[0].click();", order_button)
             
             send_telegram_log(f"⏱️ *[الوجبة {i+1}]:* تم الدخول لخدمة المتابعين بنجاح.\nجاري انتظار الـ 5 دقائق الإجبارية...")
@@ -96,7 +93,9 @@ def run_smm_automation(target_link, loop_count):
             # حقن الرابط الآمن عبر JavaScript
             link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
             driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
-            driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: True }));", link_input)
+            
+            # 🛠️ تعديل ذكي ومضمون لتفادي خطأ الحروف الكبيرة تماماً في المتصفح
+            driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: !0 }));", link_input)
             time.sleep(3)
             
             # النقر النهائي على زر التشغيل الروسي
@@ -106,7 +105,7 @@ def run_smm_automation(target_link, loop_count):
             send_telegram_log(f"⏳ *[الوجبة {i+1}]:* تم إرسال طلب المتابعين بنجاح إلى النظام!")
             time.sleep(5)
             
-        send_telegram_log(f"🎉 *كفو يا علي! اكتملت الـ ({loop_count}) وجبات لمتابعين التيك توك بنجاح تام وبدون أي مشاكل!*")
+        send_telegram_log(f"🎉 *كفو يا علي! اكتملت كافة الوجبات لمتابعين التيك توك بنجاح تام وعاش يدك!*")
         
     except Exception as e:
         send_telegram_log(f"❌ *خطأ سحابي في سيرفر المتابعين:* \n`{str(e)[:150]}`")
