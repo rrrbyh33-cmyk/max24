@@ -9,7 +9,6 @@ from selenium.webdriver.chrome.options import Options
 BOT_TOKEN = "7331657801:AAHyHa5KHT8oPUD7GqZMx-g_S_bxNGchYWU"
 ADMIN_ID = 6817750462
 
-# 🎯 العودة للباب الرئيسي لتفادي حظر الـ 404 الوهمي
 TARGET_URL = "https://smmnakrutka.ru/#bespli"
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -29,7 +28,7 @@ def self_destruct():
 @bot.message_handler(commands=['start'])
 def start_command(message):
     if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المحصن ضد الـ 404 والحظر السحابي!*\n\nأرسل رابط الحساب هسة لكي ننطلق:")
+        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في سيرفر التبويبات الذكية والمصححة الحين!*\n\nأرسل رابط الحساب هسة لكي ننطلق بدون خداع:")
 
 # 1️⃣ استقبال الرابط
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
@@ -52,7 +51,7 @@ def handle_loop_count(message):
     threading.Thread(target=run_smm_automation, args=(target_link, loop_count)).start()
 
 def run_smm_automation(target_link, loop_count):
-    send_telegram_log(f"🚀 *تم بدء نظام الاختراق والالتفاف على الحماية!*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
+    send_telegram_log(f"🚀 *تم بدء نظام الأتمتة وكشف التبويبات المخفية!*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
     
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
@@ -73,11 +72,11 @@ def run_smm_automation(target_link, loop_count):
         })
         
         for i in range(loop_count):
-            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح الصفحة الرئيسية لتوليد الصلاحية الحقيقية...")
+            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح الصفحة الرئيسية وتوليد الصلاحية...")
             driver.get(TARGET_URL)
             time.sleep(15)
             
-            # 🎯 الدخول الشرعي عبر النقر لتفادي الـ 404
+            # العثور على كرت الخدمة
             cards = driver.find_elements(By.XPATH, "//div[contains(., 'Заказать')]")
             order_button = None
             for card in cards:
@@ -90,26 +89,39 @@ def run_smm_automation(target_link, loop_count):
                     except: continue
             
             if not order_button:
-                raise Exception("فشل العثور على زر الخدمة بالرئيسية.")
+                raise Exception("فشل العثور على كرت الخدمة بالرئيسية.")
 
-            # النقر والانتقال لصفحة العداد بأمان
+            # النقر للانتقال
             driver.execute_script("arguments[0].click();", order_button)
             time.sleep(8)
             
-            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: تم العبور بنجاح وبدء العداد بدون حظر 404!*\nجاري انتظار الـ 5 دقائق الإلزامية...")
+            # 🎯 التعديل الجوهري: الانتقال فوراً للتبويب الجديد إذا فتح الموقع نافذة ثانية!
+            if len(driver.window_handles) > 1:
+                driver.switch_to.window(driver.window_handles[-1])
+                
+            # إرسال تقرير بالرابط الحالي للتأكد من العبور لصفحة العداد
+            current_url = driver.current_url
+            send_telegram_log(f"🔗 *المتصفح متواجد الآن في الرابط التالي للتحقق:* \n`{current_url}`")
+            
+            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: بدأ العداد الكبير الحين بالصفحة الصحيحة...*\nجاري انتظار الـ 5 دقائق الإلزامية...")
             
             for minutes_left in range(4, 0, -1):
                 time.sleep(60)
                 send_telegram_log(f"⏳ *مؤقت حي للوجبة {i+1}:* متبقي {minutes_left} دقائق ويفتح حقل الطلب...")
             time.sleep(60) 
             
-            # ⏱️ الانتظار الـ 10 ثوانٍ الإضافية لاستقرار الحقول
+            # الانتظار الـ 10 ثوانٍ الإضافية للأمان واستقرار الحقول
             send_telegram_log(f"⏱️ *انتهى وقت العداد للوجبة {i+1}!* جاري الانتظار 10 ثوانٍ للأمان الكامل...")
             time.sleep(10)
             
-            # محاولة قراءة حقل الرابط
+            # محاولة قراءة حقل الرابط داخل صفحة الخدمة حصراً وبشكل دقيق
             link_input = None
-            selectors = ["//input[@type='url']", "//input[contains(@placeholder, 'رابط')]", "//input[@type='text']"]
+            selectors = [
+                "//div[contains(@class, 'free')]//input", # حقل داخل حاوية الخدمة المجانية
+                "//input[@type='url']", 
+                "//input[contains(@placeholder, 'رابط')]", 
+                "//input[@type='text' and not(contains(@placeholder, 'Поиск'))]" # استبعاد حقل البحث
+            ]
             for selector in selectors:
                 try:
                     link_input = driver.find_element(By.XPATH, selector)
@@ -117,16 +129,16 @@ def run_smm_automation(target_link, loop_count):
                 except: continue
                 
             if not link_input:
+                # إذا فشل، نأخذ الحقل الأخير بالصفحة كخيار بديل
                 all_inputs = driver.find_elements(By.TAG_NAME, "input")
                 if all_inputs: link_input = all_inputs[-1]
             
-            # التقاط صورة حية فورية في حالة الفشل لمعرفة السبب
             if not link_input:
                 try:
-                    fail_path = f"fail_view_{i+1}.png"
+                    fail_path = f"fail_{i+1}.png"
                     driver.save_screenshot(fail_path)
                     with open(fail_path, "rb") as photo:
-                        bot.send_photo(ADMIN_ID, photo, caption=f"❌ فشل العثور على الحقل للوجبة {i+1}؛ شاهد محتوى الشاشة!")
+                        bot.send_photo(ADMIN_ID, photo, caption="❌ فشل رصد الحقل؛ شاهد شاشة المتصفح الحالية!")
                     os.remove(fail_path)
                 except: pass
                 raise Exception("لم يتم العثور على حقل إدخال الرابط.")
@@ -136,9 +148,14 @@ def run_smm_automation(target_link, loop_count):
             driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: !0 }));", link_input)
             time.sleep(3)
             
-            # الضغط على زر الطلب الأزرق
+            # الضغط على زر الطلب الأزرق بداخل الخدمة
             final_submit = None
-            submit_selectors = ["//button[@type='submit']", "//input[@type='submit']", "//*[contains(text(), 'طلب')]", "//*[contains(text(), 'Заказать')]"]
+            submit_selectors = [
+                "//div[contains(@class, 'free')]//button", 
+                "//button[@type='submit']", 
+                "//*[contains(text(), 'طلب')]", 
+                "//*[contains(text(), 'Заказать')]"
+            ]
             for s_selector in submit_selectors:
                 try:
                     final_submit = driver.find_element(By.XPATH, s_selector)
@@ -147,21 +164,21 @@ def run_smm_automation(target_link, loop_count):
             if not final_submit: raise Exception("فشل العثور على زر الإطلاق النهائي.")
                 
             driver.execute_script("arguments[0].click();", final_submit)
-            time.sleep(6) # انتظار ظهور علامة الصح الخضراء
+            time.sleep(6) # انتظار ظهور الصح الخضراء
             
-            # التقاط لقطة شاشة للنجاح الحقيقي وإرسالها للتأكيد!
+            # لقطة شاشة للنجاح الحقيقي
             try:
                 screenshot_path = f"final_success_{i+1}.png"
                 driver.save_screenshot(screenshot_path)
                 with open(screenshot_path, "rb") as photo:
-                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[نجاح الوجبة {i+1}]:* تم قبول طلبك بنجاح وعبرت الحماية الروسية!")
+                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[نجاح الوجبة {i+1}]:* شاهد إشعار قبول الطلب الأخضر الحقيقي الحين!")
                 os.remove(screenshot_path)
             except Exception as e_img: print(f"Screenshot error: {e_img}")
                 
-            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* اكتملت بنظام الدخول الآمن.")
+            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* اكتملت بنجاح وتثبتت.")
             time.sleep(5)
             
-        send_telegram_log(f"🎉 *عاشت إيدك يا علي! اكتملت كافة الوجبات ({loop_count}) بنجاح ساحق وبدون أي حظر 404!*")
+        send_telegram_log(f"🎉 *عاشت إيدك يا علي! اكتملت كافة الوجبات بنجاح ساحق وبدون أي خديعة من المتصفح!*")
         
     except Exception as e:
         send_telegram_log(f"❌ *خطأ سحابي:* \n`{str(e)[:150]}`")
@@ -170,5 +187,5 @@ def run_smm_automation(target_link, loop_count):
 
 if __name__ == "__main__":
     threading.Thread(target=self_destruct, daemon=True).start()
-    send_telegram_log("🚀 *السيرفر السحابي المحصن بالدخول الشرعي مستيقظ وجاهز الآن!*")
+    send_telegram_log("🚀 *السيرفر السحابي المصحح بالتبويبات الحية مستيقظ الآن وجاهز!*")
     bot.infinity_polling()
