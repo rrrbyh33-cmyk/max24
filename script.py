@@ -12,7 +12,7 @@ ADMIN_ID = 6817750462
 TARGET_URL = "https://smmnakrutka.ru/#bespli"
 
 bot = telebot.TeleBot(BOT_TOKEN)
-user_states = {}  # لحفظ البيانات المؤقتة (الرابط، الخدمة، التكرار)
+user_states = {}
 
 def send_telegram_log(text):
     try:
@@ -20,7 +20,7 @@ def send_telegram_log(text):
     except Exception as e:
         print(f"Telegram error: {e}")
 
-# ⏰ مؤقت التدمير الذاتي (30 دقيقة) لحماية دقائق جيت هاب المجانية
+# مؤقت التدمير الذاتي (30 دقيقة) لحماية دقائق جيت هاب
 def self_destruct():
     time.sleep(1800)
     send_telegram_log("⚠️ *انتهت الـ 30 دقيقة المخصصة للسيرفر السحابي.*\nتم إيقاف تشغيل البوت تلقائياً لحفظ دقائقك المجانية.")
@@ -46,7 +46,7 @@ def handle_link(message):
     )
     bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط!*\nاختر الآن الخدمة المطلوبة من الأزرار أدناه:", reply_markup=markup)
 
-# 2️⃣ معالجة زر الخدمة وطلب عدد التكرارات
+# 2️⃣ طلب التكرار
 @bot.callback_query_handler(func=lambda call: call.message.chat.id == ADMIN_ID)
 def callback_inline(call):
     if ADMIN_ID not in user_states:
@@ -59,14 +59,13 @@ def callback_inline(call):
     msg = bot.send_message(ADMIN_ID, "🔢 *كم وجبة رشق تريد تكرارها لهذا الرابط؟*\nأرسل الرقم هسة مباشرة (مثلاً: `1` أو `3`):")
     bot.register_next_step_handler(msg, handle_loop_count)
 
-# 3️⃣ استلام عدد التكرارات وبدء الأتمتة فوراً بالخلفية
+# 3️⃣ استلام التكرار والتشغيل بالخلفية
 def handle_loop_count(message):
     try:
         loop_count = int(message.text.strip())
-        if loop_count < 1:
-            loop_count = 1
+        if loop_count < 1: loop_count = 1
     except:
-        bot.send_message(ADMIN_ID, "⚠️ رسالة غير صحيحة، تم تعيين عدد التكرارات تلقائياً إلى وجبة واحدة `1`.")
+        bot.send_message(ADMIN_ID, "⚠️ تم تعيين التكرار تلقائياً إلى وجبة واحدة `1`.")
         loop_count = 1
         
     user_states[ADMIN_ID]['loops'] = loop_count
@@ -90,54 +89,55 @@ def run_smm_automation(target_link, service_type, loop_count):
         driver = webdriver.Chrome(options=chrome_options)
         
         for i in range(loop_count):
-            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فحص كروت الصفحة سحابياً...")
+            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فحص الصفحة والتسلق البرمجي للزر...")
             driver.get(TARGET_URL)
             time.sleep(15)
             
-            # 🛠️ البحث عن طريق الكرت بالكامل (div) الذي يحتوي على زر الطلب والنصوص معاً
-            cards = driver.find_elements(By.XPATH, "//div[contains(., 'Заказать')]")
+            # جلب كل أزرار الطلب في الصفحة
+            all_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать') or contains(., 'Заказать')]")
             order_button = None
             
-            for card in cards:
-                try:
-                    card_text = card.text.lower()
-                except:
-                    continue
+            for btn in all_buttons:
+                current = btn
+                context_text = ""
+                # التسلق لـ 4 مستويات لأعلى لجمع نصوص الكرت بالكامل وتجنب حيل التحديثات
+                for _ in range(4):
+                    try:
+                        current = current.find_element(By.XPATH, "..")
+                        context_text += " " + current.text.lower()
+                    except:
+                        break
                 
-                # التحقق المرن من الكلمات المفتاحية داخل الكرت الواحد
+                # مطابقة الكلمات المفتاحية بمرونة تامة (عربي، روسي، إنجليزي)
                 is_match = False
-                if service_type == "ig_followers" and "инстаграм" in card_text and "подписч" in card_text:
+                if service_type == "ig_followers" and "инст" in context_text and "подпис" in context_text:
                     is_match = True
-                elif service_type == "ig_views" and "инстаграм" in card_text and ("просмотр" in card_text or "лайк" in card_text):
+                elif service_type == "ig_views" and "инст" in context_text and ("просмотр" in context_text or "лайк" in context_text):
                     is_match = True
-                elif service_type == "tt_views" and ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "просмотр" in card_text:
+                elif service_type == "tt_views" and ("тик" in context_text or "tiktok" in context_text) and "просмотр" in context_text:
                     is_match = True
-                elif service_type == "tt_followers" and ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "подписч" in card_text:
+                elif service_type == "tt_followers" and ("тик" in context_text or "tiktok" in context_text) and "подпис" in context_text:
                     is_match = True
                     
                 if is_match:
-                    try:
-                        # العثور على الزر الخاص بهذا الكرت المحدد حصراً
-                        order_button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(., 'Заказать')]")
-                        break
-                    except:
-                        continue
+                    order_button = btn
+                    break
                     
             if not order_button:
-                raise Exception("لم يتم العثور على كرت الخدمة المتوافق؛ يرجى التأكد من اختيار الخدمة الصحيحة.")
+                raise Exception("واجهة الموقع تغيرت أو لم يتم العثور على القسم؛ تأكد من الخدمة المحددة.")
 
             driver.execute_script("arguments[0].click();", order_button)
             
-            send_telegram_log(f"⏱️ *[الوجبة {i+1} من {loop_count}]:* تم العبور لصفحة الخدمة بنجاح.\nجاري انتظار الـ 5 دقائق الإجبارية للموقع...")
+            send_telegram_log(f"⏱️ *[الوجبة {i+1} من {loop_count}]:* تم العبور للخدمة.\nجاري انتظار الـ 5 دقائق الإجبارية للموقع...")
             time.sleep(300)
             
-            # حقن الرابط السحري عبر جافا سكربت لتفادي الحجب والمشاكل المرئية
+            # حقن الرابط الآمن عبر جافا سكربت
             link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
             driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
             driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
             time.sleep(3)
             
-            # الضغط النهائي والإطلاق
+            # النقر النهائي الخفي
             final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')]")
             driver.execute_script("arguments[0].click();", final_submit)
             
