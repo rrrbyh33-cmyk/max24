@@ -65,11 +65,16 @@ def callback_inline(call):
     threading.Thread(target=run_smm_automation, args=(target_link, service_type)).start()
 
 def run_smm_automation(target_link, service_type):
-    if service_type == "ig_followers": keyword = "подписчиков в Инстаграм"
-    elif service_type == "ig_views": keyword = "просмотров в Инстаграм"
-    elif service_type == "tt_views": keyword = "просмотров в Тик Ток"
-    elif service_type == "tt_followers": keyword = "подписчиков в Тик Ток"
-    else: keyword = "Заказать"
+    # 🛠️ قائمة ذكية بالصيغ المختلفة للتغلب على تحديثات الموقع وحساسية الحروف
+    possible_texts = []
+    if service_type == "ig_followers":
+        possible_texts = ["подписчиков в Инстаграм", "Подписчики в Инстаграм", "Подписчиков в Инстаграм", "подписчики в инстаграм"]
+    elif service_type == "ig_views":
+        possible_texts = ["просмотров в Инстаграм", "Просмотры в Инстаграм", "Просмотров в Инстаграм", "просмотры в инстаграм"]
+    elif service_type == "tt_views":
+        possible_texts = ["просмотров в Тик Ток", "Просмотры в Тик Ток", "Просмотров в Тик Ток", "просмотры в тик ток", "Просмотры в ТТ"]
+    elif service_type == "tt_followers":
+        possible_texts = ["подписчиков в Тик Ток", "Подписчики в Тик Ток", "Подписчиков в Тик Ток", "подписчики в тик ток", "Подписчики в ТТ"]
 
     send_telegram_log(f"🔄 *جاري فتح المتصفح السحابي وضخ الهوية الحقيقية...*\n🔗 المستهدف: {target_link}")
     
@@ -86,15 +91,26 @@ def run_smm_automation(target_link, service_type):
         driver.get(TARGET_URL)
         time.sleep(15)
         
-        # العثور على زر الخدمة والنقر عليه
-        xpath_selector = f"//*[contains(text(), '{keyword}')]/..//*[contains(text(), 'Заказать')] | //*[contains(text(), '{keyword}')]/ancestor::div//*[contains(text(), 'Заказать')]"
-        order_button = driver.find_element(By.XPATH, xpath_selector)
+        # 🔄 حلقة ذكية لتجربة كافة صيغ النصوص المتاحة حتى نجد الزر الصحيح
+        order_button = None
+        for text_variant in possible_texts:
+            try:
+                xpath_selector = f"//*[contains(text(), '{text_variant}')]/..//*[contains(text(), 'Заказать')] | //*[contains(text(), '{text_variant}')]/ancestor::div//*[contains(text(), 'Заказать')]"
+                order_button = driver.find_element(By.XPATH, xpath_selector)
+                if order_button:
+                    break
+            except:
+                continue
+                
+        if not order_button:
+            raise Exception("لم يتم العثور على زر الخدمة؛ قد يكون الموقع غير الكلمات تماماً.")
+
         driver.execute_script("arguments[0].click();", order_button)
         
         send_telegram_log("⏱️ *تم العبور لصفحة الخدمة بنجاح.*\nجاري الآن انتظار الـ 5 دقائق الإجبارية للموقع... سأخبرك فور انتهائها.")
         time.sleep(300)
         
-        # 🛠️ الحل الجذري لخطأ Element not interactable (الحقن المباشر عبر جافا سكربت)
+        # الحل الجذري لخطأ Element not interactable (الحقن المباشر عبر جافا سكربت)
         link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text']")
         driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
         driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
