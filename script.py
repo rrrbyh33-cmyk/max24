@@ -1,7 +1,9 @@
 import os
 import time
 import threading
+import random
 import telebot
+from telebot import types
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -9,6 +11,21 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.action_chains import ActionChains
+
+# ==================== قائمة بروكسيات ====================
+PROXY_LIST = [
+    "http://103.152.112.157:80",
+    "http://103.152.112.158:80",
+    "http://103.152.112.159:80",
+    "http://103.152.112.160:80",
+    "http://103.152.112.161:80",
+    "http://103.152.112.162:80",
+]
+
+# ==================== إعدادات البروكسي ====================
+USE_PROXY = True
+CURRENT_PROXY = None
+PROXY_INDEX = 0
 
 # ==================== إعدادات المهلات المركزية ====================
 TIMEOUT_CONFIG = {
@@ -22,11 +39,13 @@ TIMEOUT_CONFIG = {
     'page_load_extra': 15,
     'after_click_service': 5,
     'after_window_switch': 5,
-    'after_submit': 8,
-    'between_orders': 5,
-    'before_link_input': 3,
-    'after_link_input': 3,
-    'counter_wait': 3,
+    'after_submit': 10,          # زيادة من 8 إلى 10 ثوان
+    'between_orders': 8,          # زيادة من 5 إلى 8 ثوان
+    'before_link_input': 5,       # زيادة من 3 إلى 5 ثوان
+    'after_link_input': 5,        # زيادة من 3 إلى 5 ثوان
+    'counter_wait': 5,            # زيادة من 3 إلى 5 ثوان
+    'after_confirmation': 5,      # وقت إضافي بعد التأكيد
+    'wait_for_success_page': 12,  # وقت انتظار صفحة النجاح
 }
 
 # ==================== التوكنات والإعدادات ====================
@@ -49,6 +68,31 @@ def self_destruct():
     time.sleep(2400) 
     send_telegram_log("⚠️ *انتهت المدة المخصصة للسيرفر السحابي تلقائياً.*")
     os._exit(0)
+
+def get_current_proxy():
+    global CURRENT_PROXY, PROXY_INDEX, PROXY_LIST
+    if not USE_PROXY:
+        return None
+    if PROXY_LIST and PROXY_INDEX < len(PROXY_LIST):
+        CURRENT_PROXY = PROXY_LIST[PROXY_INDEX]
+        return CURRENT_PROXY
+    return None
+
+def get_next_proxy():
+    global PROXY_INDEX, PROXY_LIST, CURRENT_PROXY
+    if not PROXY_LIST:
+        return None
+    PROXY_INDEX = (PROXY_INDEX + 1) % len(PROXY_LIST)
+    CURRENT_PROXY = PROXY_LIST[PROXY_INDEX]
+    return CURRENT_PROXY
+
+def get_previous_proxy():
+    global PROXY_INDEX, PROXY_LIST, CURRENT_PROXY
+    if not PROXY_LIST:
+        return None
+    PROXY_INDEX = (PROXY_INDEX - 1) % len(PROXY_LIST)
+    CURRENT_PROXY = PROXY_LIST[PROXY_INDEX]
+    return CURRENT_PROXY
 
 def validate_tiktok_link(link):
     link = link.strip()
@@ -149,8 +193,6 @@ def wait_for_counter_page(driver, timeout=30):
         send_telegram_log("⚠️ *انتهت مهلة انتظار صفحة العداد*")
         return False
 
-# ==================== دوال البحث عن حقل الرابط ====================
-
 def find_link_input_advanced(driver):
     selectors = [
         "//input[contains(@placeholder, 'Ссылка')]",
@@ -187,22 +229,6 @@ def find_link_input_advanced(driver):
             continue
     return None
 
-def find_link_input_by_scanning(driver):
-    try:
-        all_inputs = driver.find_elements(By.TAG_NAME, "input")
-        for inp in all_inputs:
-            if inp.is_displayed() and inp.is_enabled():
-                placeholder = inp.get_attribute("placeholder") or ""
-                input_type = inp.get_attribute("type") or ""
-                if "url" in input_type or "text" in input_type:
-                    if "поиск" not in placeholder.lower() and "بحث" not in placeholder.lower():
-                        if "email" not in placeholder.lower() and "почта" not in placeholder.lower():
-                            if "password" not in input_type.lower():
-                                return inp
-    except:
-        pass
-    return None
-
 def find_submit_button(driver):
     selectors = [
         "//button[@type='submit']",
@@ -224,10 +250,188 @@ def find_submit_button(driver):
             continue
     return None
 
+# ==================== دوال الأزرار ====================
+
+def proxy_menu_keyboard():
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    btn_toggle = types.InlineKeyboardButton("🔄 تشغيل/إيقاف", callback_data="proxy_toggle")
+    btn_next = types.InlineKeyboardButton("⏭️ بروكسي تالي", callback_data="proxy_next")
+    btn_prev = types.InlineKeyboardButton("⏮️ بروكسي سابق", callback_data="proxy_prev")
+    btn_status = types.InlineKeyboardButton("📊 الحالة", callback_data="proxy_status")
+    btn_refresh = types.InlineKeyboardButton("🔄 تحديث القائمة", callback_data="proxy_refresh")
+    btn_close = types.InlineKeyboardButton("❌ إغلاق", callback_data="proxy_close")
+    keyboard.add(btn_toggle, btn_status)
+    keyboard.add(btn_next, btn_prev)
+    keyboard.add(btn_refresh)
+    keyboard.add(btn_close)
+    return keyboard
+
+def show_proxy_menu():
+    global USE_PROXY, CURRENT_PROXY, PROXY_INDEX, PROXY_LIST
+    status = "🟢 مفعل" if USE_PROXY else "🔴 معطل"
+    current = CURRENT_PROXY if CURRENT_PROXY else "لا يوجد"
+    total = len(PROXY_LIST)
+    index = PROXY_INDEX + 1 if PROXY_LIST else 0
+    text = f"""
+📡 *التحكم بالبروكسي*
+
+📊 *الحالة:* {status}
+🌐 *البروكسي الحالي:* `{current}`
+📌 *الترتيب:* {index}/{total}
+📋 *عدد البروكسيات:* {total}
+"""
+    return text
+
+# ==================== معالج الأزرار ====================
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    global USE_PROXY, PROXY_INDEX, PROXY_LIST, CURRENT_PROXY
+    
+    if call.data == "proxy_toggle":
+        USE_PROXY = not USE_PROXY
+        if USE_PROXY and not CURRENT_PROXY and PROXY_LIST:
+            CURRENT_PROXY = PROXY_LIST[0]
+        bot.answer_callback_query(call.id, f"تم {'تفعيل' if USE_PROXY else 'تعطيل'} البروكسي")
+        bot.edit_message_text(
+            show_proxy_menu(),
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=proxy_menu_keyboard()
+        )
+    elif call.data == "proxy_next":
+        if PROXY_LIST:
+            PROXY_INDEX = (PROXY_INDEX + 1) % len(PROXY_LIST)
+            CURRENT_PROXY = PROXY_LIST[PROXY_INDEX]
+            bot.answer_callback_query(call.id, f"تم التبديل إلى: {CURRENT_PROXY}")
+            bot.edit_message_text(
+                show_proxy_menu(),
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=proxy_menu_keyboard()
+            )
+        else:
+            bot.answer_callback_query(call.id, "لا يوجد بروكسيات!")
+    elif call.data == "proxy_prev":
+        if PROXY_LIST:
+            PROXY_INDEX = (PROXY_INDEX - 1) % len(PROXY_LIST)
+            CURRENT_PROXY = PROXY_LIST[PROXY_INDEX]
+            bot.answer_callback_query(call.id, f"تم التبديل إلى: {CURRENT_PROXY}")
+            bot.edit_message_text(
+                show_proxy_menu(),
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=proxy_menu_keyboard()
+            )
+        else:
+            bot.answer_callback_query(call.id, "لا يوجد بروكسيات!")
+    elif call.data == "proxy_status":
+        bot.answer_callback_query(call.id, "تم تحديث الحالة")
+        bot.edit_message_text(
+            show_proxy_menu(),
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=proxy_menu_keyboard()
+        )
+    elif call.data == "proxy_refresh":
+        bot.answer_callback_query(call.id, "تم تحديث القائمة!")
+        bot.edit_message_text(
+            show_proxy_menu(),
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=proxy_menu_keyboard()
+        )
+    elif call.data == "proxy_close":
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.answer_callback_query(call.id, "تم إغلاق القائمة")
+    elif call.data == "proxy_menu":
+        bot.edit_message_text(
+            show_proxy_menu(),
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=proxy_menu_keyboard()
+        )
+        bot.answer_callback_query(call.id)
+    elif call.data == "start_work":
+        bot.edit_message_text(
+            "📝 *أرسل رابط الحساب:*\nمثال: `https://www.tiktok.com/@username`",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="Markdown"
+        )
+        bot.answer_callback_query(call.id)
+
+# ==================== دوال معالج البوت ====================
+
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    if message.chat.id == ADMIN_ID:
+        keyboard = types.InlineKeyboardMarkup()
+        btn_proxy = types.InlineKeyboardButton("📡 إعدادات البروكسي", callback_data="proxy_menu")
+        btn_start = types.InlineKeyboardButton("🚀 بدء العمل", callback_data="start_work")
+        keyboard.add(btn_proxy, btn_start)
+        bot.send_message(
+            ADMIN_ID,
+            "🔒 *أهلاً بك في سيرفر التبويبات الذكية!*\n\n"
+            "📝 *للبدء أرسل رابط الحساب:*\n"
+            "مثال: `https://www.tiktok.com/@username`\n\n"
+            "🔧 *للتحكم بالبروكسي اضغط على الزر أدناه*",
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+
+@bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
+def handle_link(message):
+    url = message.text.strip()
+    validated_url = validate_tiktok_link(url)
+    if not validated_url:
+        bot.send_message(
+            ADMIN_ID,
+            "❌ *الرابط غير صحيح!*\n"
+            "أرسل رابط TikTok صحيح مثل:\n"
+            "`https://www.tiktok.com/@username`\n"
+            "أو\n"
+            "`https://vm.tiktok.com/xxxxx/`",
+            parse_mode="Markdown"
+        )
+        return
+    user_states[ADMIN_ID] = {'link': validated_url}
+    msg = bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط!*\n🔢 كم وجبة تريد؟")
+    bot.register_next_step_handler(msg, handle_loop_count)
+
+def handle_loop_count(message):
+    try:
+        loop_count = int(message.text.strip())
+        if loop_count < 1:
+            loop_count = 1
+    except:
+        loop_count = 1
+    target_link = user_states[ADMIN_ID]['link']
+    proxy_info = f"🌐 *البروكسي:* {'مفعل' if USE_PROXY else 'معطل'}"
+    if USE_PROXY and CURRENT_PROXY:
+        proxy_info += f"\n📡 *IP:* `{CURRENT_PROXY}`"
+    bot.send_message(
+        ADMIN_ID,
+        f"⏳ *جاري تنفيذ {loop_count} وجبة...*\n\n{proxy_info}",
+        parse_mode="Markdown"
+    )
+    threading.Thread(target=run_smm_automation, args=(target_link, loop_count)).start()
+
 # ==================== الوظيفة الأساسية ====================
 
 def run_smm_automation(target_link, loop_count):
-    send_telegram_log(f"🚀 *تم بدء نظام الأتمتة*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
+    global USE_PROXY, CURRENT_PROXY
+    
+    proxy_status = "مع بروكسي" if USE_PROXY and CURRENT_PROXY else "بدون بروكسي"
+    proxy_info = f" (IP: {CURRENT_PROXY})" if USE_PROXY and CURRENT_PROXY else ""
+    
+    send_telegram_log(f"🚀 *تم بدء نظام الأتمتة*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}\n🌐 *الحالة:* {proxy_status}{proxy_info}")
     
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
@@ -238,6 +442,12 @@ def run_smm_automation(target_link, loop_count):
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    if USE_PROXY and CURRENT_PROXY:
+        chrome_options.add_argument(f'--proxy-server={CURRENT_PROXY}')
+        send_telegram_log(f"🌐 *تم استخدام البروكسي:* `{CURRENT_PROXY}`")
+    else:
+        send_telegram_log("ℹ️ *تم التشغيل بدون بروكسي (IP مباشر)*")
     
     driver = None
     try:
@@ -254,7 +464,7 @@ def run_smm_automation(target_link, loop_count):
             
             wait_for_page_load(driver)
             
-            # الخطوة 1: البحث عن خدمة TikTok والنقر عليها
+            # الخطوة 1: البحث عن خدمة TikTok
             service_clicked = False
             try:
                 send_telegram_log("🎯 *الخطوة 1: البحث عن خدمة TikTok والنقر عليها...*")
@@ -297,13 +507,10 @@ def run_smm_automation(target_link, loop_count):
             time.sleep(TIMEOUT_CONFIG['before_link_input'])
             wait_for_stable_page(driver)
             
-            # الخطوة 4: البحث عن حقل الرابط وإدخاله
+            # الخطوة 4: البحث عن حقل الرابط
             send_telegram_log("🔍 *جاري البحث عن حقل الرابط...*")
             
             link_input = find_link_input_advanced(driver)
-            if not link_input:
-                link_input = find_link_input_by_scanning(driver)
-            
             if not link_input:
                 try:
                     all_inputs = driver.find_elements(By.TAG_NAME, "input")
@@ -368,17 +575,6 @@ def run_smm_automation(target_link, loop_count):
                     pass
             
             if not submit_button:
-                try:
-                    elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать') or contains(text(), 'Задать')]")
-                    for element in elements:
-                        if element.is_displayed() and element.is_enabled():
-                            submit_button = element
-                            send_telegram_log(f"✅ *تم العثور على عنصر: {element.text[:20]}*")
-                            break
-                except:
-                    pass
-            
-            if not submit_button:
                 send_telegram_log("❌ *لم نجد زر الإرسال!*")
                 raise Exception("فشل العثور على زر الإرسال")
             
@@ -387,71 +583,83 @@ def run_smm_automation(target_link, loop_count):
             else:
                 raise Exception("فشل النقر على زر الإرسال")
             
-            # ⏳ انتظار 8 ثوانٍ لظهور صفحة النجاح
-            send_telegram_log("⏳ *جاري انتظار ظهور صفحة التأكيد (8 ثوان)...*")
-            time.sleep(8)
+            # ⏳ انتظار 10 ثوانٍ لظهور صفحة النجاح (زيادة من 8 إلى 10)
+            send_telegram_log(f"⏳ *جاري انتظار ظهور صفحة التأكيد ({TIMEOUT_CONFIG['after_submit']} ثوان)...*")
+            time.sleep(TIMEOUT_CONFIG['after_submit'])
             
-            # الخطوة 6: انتظار ظهور رسالة "Спасибо за доверие!"
+            # 🎯 انتظار ظهور رسالة "Спасибо за доверие!"
+            confirmation_received = False
+            
             try:
                 send_telegram_log("🔍 *جاري البحث عن رسالة 'Спасибо за доверие!'...*")
+                
                 WebDriverWait(driver, 15).until(
                     EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Спасибо за доверие!') or contains(text(), 'спасибо')]"))
                 )
                 send_telegram_log("✅ *تم تأكيد الطلب! ظهور رسالة النجاح*")
+                confirmation_received = True
+                
+                # انتظار إضافي بعد التأكيد
+                time.sleep(TIMEOUT_CONFIG['after_confirmation'])
+                
             except TimeoutException:
                 send_telegram_log("⚠️ *لم نرى رسالة التأكيد، ولكن تم الإرسال*")
+                confirmation_received = False
             
-            # الخطوة 7: انتظار انتهاء العداد (3 ثوانٍ)
+            # 📸 الخطوة 1: تصوير صفحة التأكيد
             try:
-                send_telegram_log("⏳ *جاري انتظار انتهاء العداد (3 ثوان)...*")
+                # انتظار ثانية إضافية للتأكد من استقرار الصفحة
+                time.sleep(2)
+                
+                screenshot_path = f"confirmation_{i+1}.png"
+                driver.save_screenshot(screenshot_path)
+                
+                status_text = "تم تأكيد الطلب ✅" if confirmation_received else "تم الإرسال ⚠️"
+                caption = f"{'✅' if confirmation_received else '⚠️'} *[الوجبة {i+1}]: {status_text}*\n\n"
+                caption += f"📋 *الرابط:* `{target_link}`\n"
+                caption += f"⏱️ *الوقت:* {time.strftime('%H:%M:%S')}\n"
+                caption += f"📊 *الحالة:* {'نجاح ✅' if confirmation_received else 'معلق ⚠️'}"
+                
+                with open(screenshot_path, "rb") as photo:
+                    bot.send_photo(ADMIN_ID, photo, caption=caption)
+                os.remove(screenshot_path)
+                send_telegram_log("📸 *تم إرسال صورة التأكيد*")
+            except Exception as e:
+                send_telegram_log(f"⚠️ *خطأ في تصوير التأكيد: {str(e)[:50]}*")
+            
+            # ⏳ انتظار انتهاء العداد (5 ثوانٍ)
+            try:
+                send_telegram_log(f"⏳ *جاري انتظار انتهاء العداد ({TIMEOUT_CONFIG['counter_wait']} ثوان)...*")
                 time.sleep(TIMEOUT_CONFIG['counter_wait'])
                 send_telegram_log("✅ *انتهى العداد!*")
             except:
                 pass
             
-            # الخطوة 8: التأكد من نجاح الطلب
+            # 📸 الخطوة 2: تصوير الصفحة النهائية بعد انتهاء العداد
             try:
-                WebDriverWait(driver, TIMEOUT_CONFIG['success_check']).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'success') or contains(text(), 'успешно') or contains(text(), 'Спасибо')]"))
-                )
-                send_telegram_log(f"✅ *[الوجبة {i+1}]: نجاح!*")
-            except:
-                send_telegram_log(f"⚠️ *[الوجبة {i+1}]: تم الإرسال*")
-            
-            # 📸 الخطوة 9: التقاط صورة للنتيجة النهائية
-            try:
-                send_telegram_log("📸 *جاري التقاط صورة للنتيجة النهائية...*")
+                time.sleep(2)  # انتظار إضافي للتأكد من استقرار الصفحة
                 
-                # انتظار قليل للتأكد من استقرار الصفحة
-                time.sleep(2)
-                
-                # التقاط الصورة
-                screenshot_path = f"final_result_{i+1}.png"
+                screenshot_path = f"final_{i+1}.png"
                 driver.save_screenshot(screenshot_path)
                 
-                # إرسال الصورة مع شرح
-                caption = f"✅ *[نتيجة الوجبة {i+1}]*\n\n"
-                caption += f"📋 *الحالة:* تم إكمال الطلب بنجاح ✅\n"
-                caption += f"🔗 *الرابط:* `{target_link}`\n"
-                caption += f"⏱️ *الوقت:* {time.strftime('%H:%M:%S')}\n\n"
-                caption += f"📸 *صورة تأكيد الطلب*"
+                caption = f"✅ *[الوجبة {i+1}]: اكتملت العملية*\n\n"
+                caption += f"📋 *الرابط:* `{target_link}`\n"
+                caption += f"⏱️ *الوقت:* {time.strftime('%H:%M:%S')}\n"
+                caption += f"📊 *الحالة النهائية:* {'نجاح كامل ✅' if confirmation_received else 'تم الإرسال ⚠️'}"
                 
                 with open(screenshot_path, "rb") as photo:
                     bot.send_photo(ADMIN_ID, photo, caption=caption)
-                
-                # حذف الصورة بعد الإرسال
                 os.remove(screenshot_path)
-                send_telegram_log("✅ *تم إرسال صورة النتيجة*")
-                
+                send_telegram_log("📸 *تم إرسال صورة النتيجة النهائية*")
             except Exception as e:
-                send_telegram_log(f"⚠️ *خطأ في التقاط الصورة: {str(e)[:50]}*")
+                send_telegram_log(f"⚠️ *خطأ في تصوير النتيجة النهائية: {str(e)[:50]}*")
             
             send_telegram_log(f"✅ *[الوجبة {i+1}]: اكتملت*")
             
             if i < loop_count - 1:
                 send_telegram_log(f"⏳ *جاري الانتظار {TIMEOUT_CONFIG['between_orders']} ثوان قبل الوجبة التالية...*")
                 time.sleep(TIMEOUT_CONFIG['between_orders'])
-            
+        
         send_telegram_log(f"🎉 *اكتملت جميع الوجبات!*")
         
     except Exception as e:
@@ -468,38 +676,11 @@ def run_smm_automation(target_link, loop_count):
         if driver:
             driver.quit()
 
-# ==================== دوال معالج البوت ====================
-
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك في سيرفر التبويبات الذكية!*\n\nأرسل رابط الحساب:")
-
-@bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
-def handle_link(message):
-    url = message.text.strip()
-    validated_url = validate_tiktok_link(url)
-    if not validated_url:
-        bot.send_message(ADMIN_ID, "❌ *الرابط غير صحيح!*\nأرسل رابط TikTok صحيح مثل:\n`https://www.tiktok.com/@username`\nأو\n`https://vm.tiktok.com/xxxxx/`")
-        return
-    user_states[ADMIN_ID] = {'link': validated_url}
-    msg = bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط!*\n🔢 كم وجبة تريد؟")
-    bot.register_next_step_handler(msg, handle_loop_count)
-
-def handle_loop_count(message):
-    try:
-        loop_count = int(message.text.strip())
-        if loop_count < 1:
-            loop_count = 1
-    except:
-        loop_count = 1
-    target_link = user_states[ADMIN_ID]['link']
-    threading.Thread(target=run_smm_automation, args=(target_link, loop_count)).start()
-    bot.send_message(ADMIN_ID, f"⏳ *جاري تنفيذ {loop_count} وجبة...*")
-
 # ==================== نقطة الدخول ====================
 
 if __name__ == "__main__":
+    if PROXY_LIST:
+        CURRENT_PROXY = PROXY_LIST[0]
     threading.Thread(target=self_destruct, daemon=True).start()
     send_telegram_log("🚀 *السيرفر جاهز!*")
     try:
