@@ -11,13 +11,13 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # ==================== إعدادات المهلات المركزية ====================
 TIMEOUT_CONFIG = {
-    'page_load': 30,        # تحميل الصفحة
-    'element_primary': 20,  # البحث الرئيسي عن العناصر
-    'element_secondary': 10,# البحث الثانوي عن العناصر
-    'element_short': 5,    # البحث السريع
-    'window_switch': 15,   # تبديل النوافذ
-    'success_check': 10,   # التحقق من النجاح
-    'retry_attempts': 3,   # عدد محاولات إعادة البحث
+    'page_load': 30,
+    'element_primary': 20,
+    'element_secondary': 10,
+    'element_short': 5,
+    'window_switch': 15,
+    'success_check': 10,
+    'retry_attempts': 3,
 }
 
 # ==================== التوكنات والإعدادات ====================
@@ -31,146 +31,243 @@ user_states = {}
 # ==================== دوال المساعدة العامة ====================
 
 def send_telegram_log(text):
-    """إرسال رسالة سجل إلى المشرف"""
     try:
         bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
     except Exception as e:
         print(f"Telegram error: {e}")
 
 def retry_with_timeout(func, driver, timeout=TIMEOUT_CONFIG['element_primary'], max_attempts=TIMEOUT_CONFIG['retry_attempts']):
-    """تنفيذ دالة مع إعادة المحاولة في حال فشلت"""
     for attempt in range(max_attempts):
         try:
             result = func(driver, timeout=timeout)
             if result:
                 return result
         except TimeoutException:
-            if attempt == max_attempts - 1: raise
+            if attempt == max_attempts - 1:
+                raise
             continue
         except Exception:
-            if attempt == max_attempts - 1: raise
+            if attempt == max_attempts - 1:
+                raise
             continue
     return None
 
 def self_destruct():
-    """إنهاء السيرفر بعد 40 دقيقة لحفظ الدقائق"""
     time.sleep(2400) 
     send_telegram_log("⚠️ *انتهت المدة المخصصة للسيرفر السحابي تلقائياً.*")
     os._exit(0)
 
-# ==================== دوال البحث المطورة والمرنة ====================
+# ==================== دوال البحث عن الخدمة (مُعدَّلة للخدمة الصحيحة) ====================
 
-def find_tiktok_service(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+def find_tiktok_followers_service(driver, timeout=TIMEOUT_CONFIG['element_primary']):
     """
-    البحث الدقيق والمطور عن خدمة TikTok متابعين بدون التقيد بكلاسات أو تاغات محددة
+    البحث عن خدمة TikTok متابعين المجانية بالضبط
     """
+    # النص الدقيق للخدمة المطلوبة
+    service_texts = [
+        "10 бесплатных подписчиков Тик Ток",
+        "бесплатных подписчиков Тик Ток",
+        "подписчиков Тик Ток",
+        "10 подписчиков Тик Ток",
+        "бесплатных подписчиков",
+        "подписчиков Тик Ток"
+    ]
+    
     try:
+        # انتظار تحميل الصفحة
         WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Заказать') or contains(text(), 'طلب')]"))
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item')]"))
         )
     except TimeoutException:
-        raise TimeoutException("انتهت مهلة انتظار تحميل عناصر الصفحة")
+        send_telegram_log("⚠️ *انتهت مهلة تحميل الصفحة*")
     
-    # استهداف عام وشامل لأي عنصر يحتوي على كلمات التيك توك والمتابعين معاً
-    keywords_xpath = "//*[(contains(., 'тик') or contains(., 'tiktok') or contains(., 'тт')) and (contains(., 'подписч') or contains(., 'متابع'))]"
-    elements = driver.find_elements(By.XPATH, keywords_xpath)
+    # البحث عن جميع البطاقات
+    service_cards = driver.find_elements(By.XPATH, "//div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item') or contains(@class, 'block')]")
     
-    for el in elements:
+    # إذا لم نجد بطاقات، نبحث عن أي div يحتوي على النص المطلوب
+    if not service_cards:
+        service_cards = driver.find_elements(By.XPATH, "//div[contains(., 'подписчиков Тик Ток') or contains(., 'Тик Ток')]")
+    
+    send_telegram_log(f"🔍 *تم العثور على {len(service_cards)} بطاقة خدمة*")
+    
+    for idx, card in enumerate(service_cards):
         try:
-            # التسلق لأقرب حاوية كرت محيطة تمثل القسم
-            parent = el.find_element(By.XPATH, "./ancestor::div[1] | ./ancestor::a[1]")
+            card_text = card.text.lower()
             
-            # البحث عن الهدف القابل للنقر بمرونة تامة داخل الكرت
-            click_targets = parent.find_elements(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(text(), 'طلب') or @href or name()='button' or name()='a']")
-            if click_targets:
-                return click_targets[0]
+            # عرض النص للتشخيص
+            if idx < 5:
+                send_telegram_log(f"📋 *بطاقة {idx+1}:* `{card_text[:100]}...`")
+            
+            # التحقق من وجود النص المطلوب
+            is_target_service = False
+            for text in service_texts:
+                if text.lower() in card_text:
+                    is_target_service = True
+                    break
+            
+            # تحقق إضافي: وجود كلمات مفتاحية
+            has_followers = "подписчик" in card_text or "متابع" in card_text
+            has_tiktok = "тик ток" in card_text or "tiktok" in card_text or "тт" in card_text
+            has_free = "бесплат" in card_text or "مجاني" in card_text
+            
+            # إذا تطابق النص أو توفرت الكلمات المفتاحية
+            if is_target_service or (has_followers and has_tiktok and has_free):
+                send_telegram_log(f"✅ *تم العثور على الخدمة المطلوبة في البطاقة {idx+1}*")
+                send_telegram_log(f"📋 *نص الخدمة:* `{card_text[:150]}...`")
                 
-            return parent
-        except:
+                # البحث عن زر "Заказать"
+                try:
+                    order_button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(text(), 'طلب')]")
+                    return order_button
+                except:
+                    # البحث عن أي زر في البطاقة
+                    try:
+                        buttons = card.find_elements(By.TAG_NAME, "button")
+                        if buttons:
+                            return buttons[0]
+                    except:
+                        pass
+                    
+                    # البحث عن عنصر قابل للنقر
+                    try:
+                        clickable = card.find_element(By.XPATH, ".//a | .//div[contains(@class, 'btn')] | .//span[contains(@class, 'btn')]")
+                        return clickable
+                    except:
+                        pass
+        except Exception as e:
             continue
+    
     return None
 
-def find_tiktok_service_alternative(driver, timeout=TIMEOUT_CONFIG['element_secondary']):
-    """طرق بديلة وعامية جداً للوصول لزر المتابعين عند فشل الطريقة الأولى"""
-    xpath_patterns = [
-        "//*[contains(., 'тик') and contains(., 'подписч')]//*[contains(text(), 'Заказать') or contains(text(), 'طلب')]",
-        "//a[contains(., 'тик') and contains(., 'подписч')]",
-        "//a[contains(., 'tiktok') and contains(., 'follower')]",
-        "//*[contains(., 'тик') and contains(., 'подписч')]"
-    ]
-    for xpath in xpath_patterns:
-        try:
-            element = WebDriverWait(driver, timeout).until(
-                EC.presence_of_element_located((By.XPATH, xpath))
-            )
-            if element and element.is_displayed():
-                return element
-        except:
-            continue
-    raise TimeoutException("انتهت مهلة البحث البديل الشامل عن الخدمة")
+def find_service_by_text(driver, search_text, timeout=TIMEOUT_CONFIG['element_primary']):
+    """
+    البحث عن خدمة بنص محدد
+    """
+    try:
+        # البحث المباشر عن النص
+        elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{search_text}')]")
+        
+        for element in elements:
+            try:
+                # العثور على البطاقة الأب
+                parent_card = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item')]")
+                if parent_card:
+                    # البحث عن زر الطلب
+                    try:
+                        order_button = parent_card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(text(), 'طلب')]")
+                        return order_button
+                    except:
+                        buttons = parent_card.find_elements(By.TAG_NAME, "button")
+                        if buttons:
+                            return buttons[0]
+            except:
+                continue
+    except:
+        pass
+    
+    return None
 
-def find_link_input(driver, timeout=TIMEOUT_CONFIG['element_primary']):
-    """البحث عن حقل إدخال الرابط مع مهلة محددة"""
+def find_any_service_with_order(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+    """
+    البحث عن أي خدمة تحتوي على زر طلب (كحل أخير)
+    """
+    try:
+        # البحث عن أي زر "Заказать"
+        order_buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать') or contains(text(), 'طلب')]")
+        
+        for button in order_buttons:
+            try:
+                if button.is_displayed() and button.is_enabled():
+                    return button
+            except:
+                continue
+    except:
+        pass
+    
+    return None
+
+def find_link_input_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+    """
+    البحث المحسّن عن حقل إدخال الرابط
+    """
     selectors = [
-        "//div[contains(@class, 'free')]//input",
         "//input[@type='url']",
         "//input[contains(@placeholder, 'رابط')]",
         "//input[contains(@placeholder, 'Ссылка')]",
         "//input[contains(@placeholder, 'Link')]",
-        "//input[@type='text' and not(contains(@placeholder, 'Поиск'))]",
-        "//input[@type='text'][last()]"
+        "//input[contains(@placeholder, 'https')]",
+        "//input[contains(@id, 'link') or contains(@id, 'url')]",
+        "//input[contains(@name, 'link') or contains(@name, 'url')]",
+        "//input[@type='text' and not(contains(@placeholder, 'Поиск')) and not(contains(@placeholder, 'بحث'))]",
     ]
+    
     for selector in selectors:
         try:
-            element = WebDriverWait(driver, min(timeout/3, TIMEOUT_CONFIG['element_short'])).until(
-                EC.presence_of_element_located((By.XPATH, selector))
-            )
-            if element and element.is_displayed():
-                return element
+            elements = driver.find_elements(By.XPATH, selector)
+            for element in elements:
+                if element.is_displayed() and element.is_enabled():
+                    return element
         except:
             continue
+    
+    # إذا فشل كل شيء، نأخذ جميع الحقول النصية
     try:
         all_inputs = driver.find_elements(By.TAG_NAME, "input")
-        for inp in reversed(all_inputs):
-            if inp.is_displayed() and inp.is_enabled(): return inp
-    except: pass
-    raise TimeoutException("انتهت مهلة البحث عن حقل الرابط")
+        for inp in all_inputs:
+            try:
+                if inp.is_displayed() and inp.is_enabled():
+                    input_type = inp.get_attribute("type")
+                    if input_type in ["text", "url", None]:
+                        return inp
+            except:
+                continue
+    except:
+        pass
+    
+    return None
 
-def find_submit_button(driver, timeout=TIMEOUT_CONFIG['element_primary']):
-    """البحث عن زر الإرسال النهائي مع مهلة محددة"""
+def find_submit_button_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+    """
+    البحث المحسّن عن زر الإرسال النهائي
+    """
     selectors = [
-        "//div[contains(@class, 'free')]//button",
         "//button[@type='submit']",
-        "//*[contains(text(), 'طلب')]",
-        "//*[contains(text(), 'Заказать')]",
-        "//*[contains(text(), 'Submit')]",
+        "//*[contains(text(), 'Заказать') and not(contains(@class, 'disabled'))]",
+        "//*[contains(text(), 'طلب') and not(contains(@class, 'disabled'))]",
         "//button[contains(@class, 'btn-primary') or contains(@class, 'btn-success')]",
-        "//button[last()]"
+        "//button[contains(@class, 'order') or contains(@class, 'submit')]",
+        "//input[@type='submit']",
     ]
+    
     for selector in selectors:
         try:
-            element = WebDriverWait(driver, min(timeout/3, TIMEOUT_CONFIG['element_short'])).until(
-                EC.element_to_be_clickable((By.XPATH, selector))
-            )
-            if element and element.is_displayed(): return element
+            elements = driver.find_elements(By.XPATH, selector)
+            for element in elements:
+                if element.is_displayed() and element.is_enabled():
+                    return element
         except:
             continue
+    
+    # البحث عن أي زر يحتوي على كلمات طلب
     try:
         buttons = driver.find_elements(By.TAG_NAME, "button")
         for btn in buttons:
             try:
                 btn_text = btn.text.lower()
-                if "заказать" in btn_text or "طلب" in btn_text or "submit" in btn_text:
-                    if btn.is_displayed() and btn.is_enabled(): return btn
-            except: continue
-    except: pass
-    raise TimeoutException("انتهت مهلة البحث عن زر الإرسال")
+                if any(word in btn_text for word in ["заказать", "طلب", "order", "submit"]):
+                    if btn.is_displayed() and btn.is_enabled():
+                        return btn
+            except:
+                continue
+    except:
+        pass
+    
+    return None
 
 # ==================== الوظيفة الأساسية للأتمتة ====================
 
 def run_smm_automation(target_link, loop_count):
-    """الوظيفة الرئيسية لتشغيل أتمتة الخدمات بالترتيب الصحيح الحين"""
-    send_telegram_log(f"🚀 *تم بدء نظام الأتمتة وكشف التبويبات المخفية!*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
+    send_telegram_log(f"🚀 *تم بدء نظام الأتمتة*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
     
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
@@ -190,155 +287,215 @@ def run_smm_automation(target_link, loop_count):
         })
         
         for i in range(loop_count):
-            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح الصفحة الرئيسية وتوليد الصلاحية...")
+            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح الصفحة الرئيسية...")
             
             driver.set_page_load_timeout(TIMEOUT_CONFIG['page_load'])
             driver.get(TARGET_URL)
-            time.sleep(5) 
             
-            # 🎯 البحث الدقيق المرن عن الخدمة مع إعادة المحاولة
+            # انتظار تحميل الصفحة
+            time.sleep(5)
+            
+            # 🎯 البحث عن خدمة TikTok متابعين المجانية
+            order_button = None
+            
+            # محاولة 1: البحث عن الخدمة المطلوبة بالضبط
             try:
-                order_button = retry_with_timeout(find_tiktok_service, driver, timeout=TIMEOUT_CONFIG['element_primary'])
+                send_telegram_log("🔍 *جاري البحث عن خدمة '10 бесплатных подписчиков Тик Ток'...*")
+                order_button = retry_with_timeout(
+                    find_tiktok_followers_service,
+                    driver,
+                    timeout=TIMEOUT_CONFIG['element_primary'],
+                    max_attempts=2
+                )
             except TimeoutException:
-                send_telegram_log("⚠️ *انتهت مهلة البحث، جاري الانتقال للطريقة البديلة...*")
+                send_telegram_log("⚠️ *انتهت مهلة البحث عن الخدمة المطلوبة*")
+                order_button = None
+            
+            # محاولة 2: البحث بالنص المباشر
+            if not order_button:
                 try:
-                    order_button = retry_with_timeout(find_tiktok_service_alternative, driver, timeout=TIMEOUT_CONFIG['element_secondary'], max_attempts=2)
-                except TimeoutException:
+                    send_telegram_log("🔍 *جاري البحث المباشر عن النص...*")
+                    order_button = find_service_by_text(driver, "подписчиков Тик Ток")
+                except:
+                    order_button = None
+            
+            # محاولة 3: البحث عن أي خدمة بها زر طلب
+            if not order_button:
+                try:
+                    send_telegram_log("🔍 *جاري البحث عن أي خدمة متاحة...*")
+                    order_button = retry_with_timeout(
+                        find_any_service_with_order,
+                        driver,
+                        timeout=TIMEOUT_CONFIG['element_secondary'],
+                        max_attempts=2
+                    )
+                except:
                     order_button = None
             
             if not order_button:
-                error_screenshot = f"error_service_not_found_{i+1}.png"
-                driver.save_screenshot(error_screenshot)
-                with open(error_screenshot, "rb") as photo:
-                    bot.send_photo(ADMIN_ID, photo, caption="❌ *فشل العثور على الخدمة الحين؛ راجع التصميم الحالي.*")
-                os.remove(error_screenshot)
-                raise Exception("لم يتم العثور على خدمة TikTok متابعين")
+                # حفظ صورة للخطأ
+                error_screenshot = f"error_no_service_{i+1}.png"
+                try:
+                    driver.save_screenshot(error_screenshot)
+                    with open(error_screenshot, "rb") as photo:
+                        bot.send_photo(ADMIN_ID, photo, caption="❌ *فشل العثور على الخدمة!*\nالخدمة المطلوبة: `10 бесплатных подписчиков Тик Ток`")
+                    os.remove(error_screenshot)
+                except:
+                    pass
+                raise Exception("لم يتم العثور على خدمة '10 бесплатных подписчиков Тик Тوك'")
 
-            # النقر والانتقال لصفحة العداد
-            driver.execute_script("arguments[0].scrollIntoView(true);", order_button)
-            time.sleep(1)
-            driver.execute_script("arguments[0].click();", order_button)
-            
-            # إدارة التبويبات المتعددة والتحول للنافذة النشطة
+            # النقر على الخدمة المختارة
             try:
-                WebDriverWait(driver, TIMEOUT_CONFIG['window_switch']).until(lambda d: len(d.window_handles) > 1)
-                driver.switch_to.window(driver.window_handles[-1])
-                send_telegram_log("🔀 *تم كشف التبويب الجديد والتحول إليه بنجاح.*")
-            except TimeoutException:
-                send_telegram_log("ℹ️ *نواصل العمل في نفس التبويب المتاح الحين.*")
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", order_button)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", order_button)
+                send_telegram_log("✅ *تم النقر على الخدمة المختارة*")
+            except Exception as e:
+                send_telegram_log(f"⚠️ *خطأ في النقر على الخدمة:* {str(e)[:50]}")
+                try:
+                    order_button.click()
+                except:
+                    raise Exception("فشل النقر على الخدمة")
+            
+            # انتظار فتح النافذة الجديدة
+            time.sleep(5)
+            try:
+                if len(driver.window_handles) > 1:
+                    driver.switch_to.window(driver.window_handles[-1])
+                    send_telegram_log("🔀 *تم التبديل إلى النافذة الجديدة*")
+            except:
+                pass
             
             current_url = driver.current_url
-            send_telegram_log(f"🔗 *المتصفح متواجد الآن بالرابط للتحقق:* \n`{current_url}`")
+            send_telegram_log(f"🔗 *الصفحة الحالية:* `{current_url}`")
             
-            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: بدأ العداد الكبير بالصفحة...*\nجاري انتظار الـ 5 دقائق الإلزامية في الخلفية.")
-            
-            # المؤقت الحي للتليغرام
+            # انتظار 5 دقائق
+            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: جاري انتظار 5 دقائق...*")
             for minutes_left in range(4, 0, -1):
                 time.sleep(60)
-                send_telegram_log(f"⏳ *مؤقت حي للوجبة {i+1}:* متبقي {minutes_left} دقائق ويفتح حقل الطلب...")
-            time.sleep(60) 
+                send_telegram_log(f"⏳ *متبقي {minutes_left} دقائق...*")
+            time.sleep(60)
             
-            # الانتظار الـ 10 ثوانٍ الإضافية للأمان التام التي أضفتها أنت يا بطل
-            send_telegram_log(f"⏱️ *انتهى وقت العداد للوجبة {i+1}!* جاري الانتظار 10 ثوانٍ للأمان واستقرار الحقول...")
+            send_telegram_log(f"⏱️ *انتهى وقت الانتظار للوجبة {i+1}!*")
             time.sleep(10)
             
-            # البحث عن حقل الرابط
-            try:
-                link_input = find_link_input(driver, timeout=TIMEOUT_CONFIG['element_primary'])
-            except TimeoutException:
-                link_input = None
+            # ✅ البحث عن حقل الرابط
+            link_input = find_link_input_enhanced(driver)
             
             if not link_input:
-                error_screenshot = f"error_input_not_found_{i+1}.png"
-                driver.save_screenshot(error_screenshot)
-                with open(error_screenshot, "rb") as photo:
-                    bot.send_photo(ADMIN_ID, photo, caption="❌ *فشل رصد حقل إدخال الرابط بعد الـ 10 ثوانٍ!*")
-                os.remove(error_screenshot)
+                error_screenshot = f"error_no_input_{i+1}.png"
+                try:
+                    driver.save_screenshot(error_screenshot)
+                    with open(error_screenshot, "rb") as photo:
+                        bot.send_photo(ADMIN_ID, photo, caption="❌ *فشل العثور على حقل إدخال الرابط!*")
+                    os.remove(error_screenshot)
+                except:
+                    pass
                 raise Exception("لم يتم العثور على حقل إدخال الرابط.")
             
-            # حقن الرابط الآمن بالجافا سكربت
-            driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
-            driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: !0 }));", link_input)
+            # حقن الرابط
+            try:
+                driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
+                driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
+                send_telegram_log("✅ *تم إدخال الرابط بنجاح*")
+            except Exception as e:
+                send_telegram_log(f"⚠️ *خطأ في إدخال الرابط:* {str(e)[:50]}")
+                link_input.send_keys(target_link)
+            
             time.sleep(3)
             
-            # البحث عن زر الإرسال النهائي وضغطه
+            # ✅ البحث عن زر الإرسال
+            final_submit = find_submit_button_enhanced(driver)
+            
+            if not final_submit:
+                raise Exception("فشل العثور على زر الإرسال.")
+            
+            # النقر على زر الإرسال
             try:
-                final_submit = find_submit_button(driver, timeout=TIMEOUT_CONFIG['element_primary'])
-            except TimeoutException:
-                final_submit = None
-            
-            if not final_submit: raise Exception("فشل العثور على زر الإطلاق النهائي.")
-            
-            driver.execute_script("arguments[0].scrollIntoView(true);", final_submit)
-            time.sleep(1)
-            driver.execute_script("arguments[0].click();", final_submit)
-            
-            # فحص إشعار النجاح بالموقع
-            try:
-                WebDriverWait(driver, TIMEOUT_CONFIG['success_check']).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'success') or contains(text(), 'успешно') or contains(text(), 'طلب')]"))
-                )
-                send_telegram_log(f"✅ *[الوجبة {i+1}]: تم رصد إشعار النجاح الأخضر بالموقع الحين!*")
-            except TimeoutException:
-                send_telegram_log(f"⚠️ *[الوجبة {i+1}]: لم نرى علامة النجاح لكن تم إرسال النقرة بنجاح.*")
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", final_submit)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", final_submit)
+                send_telegram_log("✅ *تم النقر على زر الإرسال*")
+            except Exception as e:
+                send_telegram_log(f"⚠️ *خطأ في النقر على زر الإرسال:* {str(e)[:50]}")
+                try:
+                    final_submit.click()
+                except:
+                    raise Exception("فشل النقر على زر الإرسال")
             
             time.sleep(6)
             
-            # التقاط لقطة شاشة النجاح الصورية
+            # ✅ التأكد من نجاح الطلب
             try:
-                screenshot_path = f"final_success_{i+1}.png"
+                WebDriverWait(driver, TIMEOUT_CONFIG['success_check']).until(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'success') or contains(text(), 'успешно') or contains(text(), 'تم')]"))
+                )
+                send_telegram_log(f"✅ *[الوجبة {i+1}]: تم تأكيد نجاح الطلب!*")
+            except TimeoutException:
+                send_telegram_log(f"⚠️ *[الوجبة {i+1}]: لم نرى علامة النجاح ولكن تم الإرسال.*")
+            
+            # لقطة شاشة للنجاح
+            try:
+                screenshot_path = f"success_{i+1}.png"
                 driver.save_screenshot(screenshot_path)
                 with open(screenshot_path, "rb") as photo:
-                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[صورة الوجبة {i+1}]:* شاهد لقطة شاشة حالة الإطلاق الحالية الحين!")
+                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[نجاح الوجبة {i+1}]*")
                 os.remove(screenshot_path)
-            except Exception as e_img: print(f"Screenshot error: {e_img}")
-                
-            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* اكتملت بنجاح كامل.")
+            except:
+                pass
+            
+            send_telegram_log(f"✅ *[الوجبة {i+1}]: اكتملت بنجاح*")
             time.sleep(5)
             
-        send_telegram_log(f"🎉 *عاشت إيدك يا علي! اكتملت كافة الوجبات المتكررة بنجاح ساحق ومثالي مئة بالمئة!*")
+        send_telegram_log(f"🎉 *اكتملت جميع الوجبات بنجاح!*")
         
     except Exception as e:
-        send_telegram_log(f"❌ *خطأ سحابي في السيرفر المقفل:* \n`{str(e)[:150]}`")
+        send_telegram_log(f"❌ *خطأ:* \n`{str(e)[:200]}`")
         try:
             error_screenshot = "final_error.png"
             driver.save_screenshot(error_screenshot)
             with open(error_screenshot, "rb") as photo:
-                bot.send_photo(ADMIN_ID, photo, caption="❌ *لقطة حية للحالة عند حدوث الخطأ العام الحين!*")
+                bot.send_photo(ADMIN_ID, photo, caption="❌ *حدث خطأ غير متوقع!*")
             os.remove(error_screenshot)
-        except: pass
+        except:
+            pass
     finally:
-        if driver: driver.quit()
+        if driver:
+            driver.quit()
 
 # ==================== دوال معالج البوت ====================
 
 @bot.message_handler(commands=['start'])
 def start_command(message):
     if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في النسخة الخارقة المطورة بيديك والمدعومة بالفحص الشامل العام الحين!*\n\nقم بإرسال رابط الحساب لكي ننطلق بدون أي مشاكل:")
+        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك في سيرفر التبويبات الذكية!*\n\nأرسل رابط الحساب:")
 
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
 def handle_link(message):
     url = message.text.strip()
     user_states[ADMIN_ID] = {'link': url}
-    
-    msg = bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط بنجاح!*\n🔢 كم وجبة رشق تريد تكرارها؟ أرسل الرقم هسة:")
+    msg = bot.send_message(ADMIN_ID, "📥 *تم استلام الرابط!*\n🔢 كم وجبة تريد؟")
     bot.register_next_step_handler(msg, handle_loop_count)
 
 def handle_loop_count(message):
     try:
         loop_count = int(message.text.strip())
-        if loop_count < 1: loop_count = 1
+        if loop_count < 1:
+            loop_count = 1
     except:
         loop_count = 1
-        
+    
     target_link = user_states[ADMIN_ID]['link']
     threading.Thread(target=run_smm_automation, args=(target_link, loop_count)).start()
-    bot.send_message(ADMIN_ID, f"⏳ *جاري تشغيل الـ {loop_count} وجبة المتتالية سحابياً...*\nترقب تحديثات المؤقت واللقطات الحية الحين!")
+    bot.send_message(ADMIN_ID, f"⏳ *جاري تنفيذ {loop_count} وجبة...*")
+
+# ==================== نقطة الدخول ====================
 
 if __name__ == "__main__":
     threading.Thread(target=self_destruct, daemon=True).start()
+    send_telegram_log("🚀 *السيرفر جاهز!*")
     try:
         bot.infinity_polling()
     except KeyboardInterrupt:
+        send_telegram_log("🛑 *تم إيقاف السيرفر*")
         os._exit(0)
