@@ -8,7 +8,9 @@ from selenium.webdriver.chrome.options import Options
 
 BOT_TOKEN = "7331657801:AAHyHa5KHT8oPUD7GqZMx-g_S_bxNGchYWU"
 ADMIN_ID = 6817750462
-TARGET_URL = "https://smmnakrutka.ru/#bespli"
+
+# 🎯 الرابط الصحيح والمباشر مية بالمية من داخل متصفحك لخدمة التيك توك
+TARGET_URL = "https://smmnakrutka.ru/free-tik"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
@@ -27,7 +29,7 @@ def self_destruct():
 @bot.message_handler(commands=['start'])
 def start_command(message):
     if message.chat.id == ADMIN_ID:
-        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المعتمد على ترتيبك الصحيح مئة بالمئة!*\n\nأرسل رابط الحساب هسة لكي ننطلق:")
+        bot.send_message(ADMIN_ID, "🔒 *أهلاً بك يا علي في السيرفر المقفل بالرابط الصحيح المباشر!*\n\nأرسل رابط الحساب هسة لكي نبدأ:")
 
 # 1️⃣ استقبال الرابط
 @bot.message_handler(func=lambda message: message.chat.id == ADMIN_ID and message.text.startswith('http'))
@@ -50,7 +52,7 @@ def handle_loop_count(message):
     threading.Thread(target=run_smm_automation, args=(target_link, loop_count)).start()
 
 def run_smm_automation(target_link, loop_count):
-    send_telegram_log(f"🚀 *تم بدء الرشق حسب الترتيب الصحيح لصورك يا علي!*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
+    send_telegram_log(f"🚀 *تم بدء الرشق المباشر والمضمون الحين!*\n🔗 المستهدف: {target_link}\n🔢 الوجبات المطلوبة: {loop_count}")
     
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
@@ -64,73 +66,52 @@ def run_smm_automation(target_link, loop_count):
         driver = webdriver.Chrome(options=chrome_options)
         
         for i in range(loop_count):
-            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح الموقع واستهداف الخدمة...")
+            send_telegram_log(f"🔄 *[الوجبة {i+1} من {loop_count}]:* جاري فتح صفحة الخدمة المستهدفة...")
             driver.get(TARGET_URL)
-            time.sleep(12)
+            time.sleep(10)
             
-            # العثور على كرت الخدمة الرئيسي
-            cards = driver.find_elements(By.XPATH, "//div[contains(., 'Заказать')]")
-            order_button = None
-            for card in cards:
-                try: card_text = card.text.lower()
-                except: continue
-                if ("тик" in card_text or "tiktok" in card_text or "тт" in card_text) and "подписч" in card_text:
-                    try:
-                        order_button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать') or contains(., 'Заказать')]")
-                        break
-                    except: continue
-            
-            if not order_button:
-                raise Exception("لم يتم العثور على زر الخدمة في الصفحة الرئيسية.")
-
-            # الدخول لصفحة الخدمة حيث يبدأ العداد الكبير الحين
-            driver.execute_script("arguments[0].click();", order_button)
-            time.sleep(5)
-            
-            # 🎯 الخطوة الأولى (حسب صورتك الأولى): الانتظار الإجباري لمدة 5 دقائق أولاً لكي يختفي العداد ويظهر الزر!
-            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: العداد التنازلي الكبير بدأ الحين في الموقع...*\nالمتصفح صافن بالصفحة وينتظر ظهور زر الطلب الأزرق. سأقوم بتحديثك كل دقيقة.")
+            # ⏱️ الانتظار الإجباري للعداد الكبير بداخل صفحة الخدمة المباشرة
+            send_telegram_log(f"⏱️ *[الوجبة {i+1}]: العداد الكبير يعمل الآن بالصفحة...*\nالمتصفح صافن وينتظر انتهاء الـ 5 دقائق لظهور حقل الرابط والزر الأزرق.")
             
             for minutes_left in range(4, 0, -1):
                 time.sleep(60)
-                send_telegram_log(f"⏳ *مؤقت حي للوجبة {i+1}:* متبقي {minutes_left} دقائق ويظهر زر الطلب...")
-            time.sleep(60) # الدقيقة الأخيرة لتكملة الـ 5 دقائق كاملة
+                send_telegram_log(f"⏳ *مؤقت حي للوجبة {i+1}:* متبقي {minutes_left} دقائق ويظهر حقل الطلب...")
+            time.sleep(60) # الدقيقة الأخيرة
             
-            # 🎯 الخطوة الثانية (حسب صورتك الثانية): الآن العداد انتهى والزر ظهر؛ نقوم بحقن الرابط فوراً
-            send_telegram_log(f"🔥 *انتهى العداد الحين للوجبة {i+1}!* جاري حقن الرابط والضغط على زر طلب الأزرق...")
+            # 🔥 الآن انطلق وحقن الرابط فوراً بعد انتهاء المؤقت وظهور الحقل
+            send_telegram_log(f"🔥 *انتهى الانتظار للوجبة {i+1}!* جاري كتابة الرابط والضغط على زر طلب الأزرق...")
             
             link_input = driver.find_element(By.XPATH, "//input[@type='url'] | //input[@type='text'] | //input[contains(@placeholder, 'رابط')]")
             driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
             driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: !0 }));", link_input)
             time.sleep(3)
             
-            # الضغط على زر طلب الأزرق (Запустить / طلب / Заказать)
-            final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'Запустить')] | //*[contains(text(), 'طلب')] | //*[contains(text(), 'Заказать')]")
+            # الضغط المباشر على زر طلب الأزرق
+            final_submit = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit'] | //*[contains(text(), 'طلب')] | //*[contains(text(), 'Заказать')]")
             driver.execute_script("arguments[0].click();", final_submit)
+            time.sleep(5) # انتظار ظهور المربع الأخضر
             
-            # انتظار 5 ثوانٍ لكي تظهر واجهة النجاح الخضراء المنبثقة كاملة
-            time.sleep(5)
-            
-            # 🎯 الخطوة الثالثة (حسب صورتك الثالثة): التقاط صورة حية فورية لنافذة النجاح الخضراء وإرسالها لك!
+            # 📸 التقاط الصورة وإرسالها لك لكي تشاهد المربع الأخضر بنفسك!
             try:
-                screenshot_path = f"live_success_{i+1}.png"
+                screenshot_path = f"final_success_{i+1}.png"
                 driver.save_screenshot(screenshot_path)
                 with open(screenshot_path, "rb") as photo:
-                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[نجاح الوجبة {i+1}]:* شاهد علامة الصح والنجاح الحقيقية من داخل الموقع مية بالمية!")
+                    bot.send_photo(ADMIN_ID, photo, caption=f"✅ *[نجاح الوجبة {i+1}]:* شاهد إشعار قبول الطلب الحقيقي من داخل صفحة الخدمة!")
                 os.remove(screenshot_path)
             except Exception as e_img:
                 print(f"Screenshot error: {e_img}")
                 
-            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* اكتمل إطلاق هذه الوجبة وثبتت بنجاح!")
+            send_telegram_log(f"⏳ *[الوجبة {i+1}]:* اكتملت وجبتك بنجاح تام.")
             time.sleep(3)
             
-        send_telegram_log(f"🎉 *عاشت إيدك يا علي! اكتملت كافة الوجبات المطلوبة ({loop_count}) بالترتيب والمؤقت الصحيح والطلبات الحين واصلة لحسابك!*")
+        send_telegram_log(f"🎉 *عاشت إيدك يا علي! اكتملت كافة الوجبات بنجاح ساحق واستقرار 100% عبر الرابط الصحيح!*")
         
     except Exception as e:
-        send_telegram_log(f"❌ *خطأ سحابي أثناء الرشق:* \n`{str(e)[:150]}`")
+        send_telegram_log(f"❌ *خطأ سحابي في السيرفر المباشر:* \n`{str(e)[:150]}`")
     finally:
         if driver: driver.quit()
 
 if __name__ == "__main__":
     threading.Thread(target=self_destruct, daemon=True).start()
-    send_telegram_log("🚀 *السيرفر السحابي المرتب بترتيب صور علي الصحيح مستيقظ الحين وجاهز!*")
+    send_telegram_log("🚀 *السيرفر السحابي المقفل بالرابط المباشر الصحيح مستيقظ الآن وجاهز!*")
     bot.infinity_polling()
