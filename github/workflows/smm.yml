@@ -1,0 +1,49 @@
+name: SMM Cloud Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_link:
+        description: 'أدخل رابط الحساب أو المنشور المستهدف'
+        required: true
+        type: string
+      service_type:
+        description: 'اختر الخدمة المطلوبة'
+        required: true
+        type: choice
+        options:
+          - 'ig_followers'
+          - 'ig_views'
+          - 'tt_views'
+          - 'tt_followers'
+      loop_count:
+        description: 'عدد مرات التكرار (كل تكرار يأخذ 5 دقائق)'
+        required: true
+        default: '1'
+        type: string
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run SMM Automation Script
+        env:
+          BOT_TOKEN: '7331657801:AAHyHa5KHT8oPUD7GqZMx-g_S_bxNGchYWU'
+          ADMIN_ID: '6817750462'
+          TARGET_LINK: ${{ github.event.inputs.target_link }}
+          SERVICE_TYPE: ${{ github.event.inputs.service_type }}
+          LOOP_COUNT: ${{ github.event.inputs.loop_count }}
+        run: python script.py
