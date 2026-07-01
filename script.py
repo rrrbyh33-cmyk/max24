@@ -11,13 +11,14 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # ==================== إعدادات المهلات المركزية ====================
 TIMEOUT_CONFIG = {
-    'page_load': 30,
-    'element_primary': 20,
-    'element_secondary': 10,
-    'element_short': 5,
-    'window_switch': 15,
-    'success_check': 10,
-    'retry_attempts': 3,
+    'page_load': 60,           # زيادة المهلة إلى 60 ثانية
+    'element_primary': 30,
+    'element_secondary': 15,
+    'element_short': 8,
+    'window_switch': 20,
+    'success_check': 15,
+    'retry_attempts': 5,
+    'page_load_extra': 15,
 }
 
 # ==================== التوكنات والإعدادات ====================
@@ -41,178 +42,206 @@ def self_destruct():
     send_telegram_log("⚠️ *انتهت المدة المخصصة للسيرفر السحابي تلقائياً.*")
     os._exit(0)
 
-# ==================== دوال البحث عن الخدمة ====================
+# ==================== دوال البحث عن الخدمات (مُعاد تصميمها) ====================
 
-def wait_for_services_to_load(driver, timeout=TIMEOUT_CONFIG['page_load']):
+def wait_for_page_load(driver, timeout=TIMEOUT_CONFIG['page_load']):
     """
-    انتظار تحميل الخدمات بشكل صحيح
+    انتظار تحميل الصفحة بشكل كامل
     """
     try:
-        # انتظار ظهور عنصر الخدمات
+        send_telegram_log("⏳ *جاري انتظار تحميل الصفحة...*")
+        
+        # انتظار تحميل الجسم
         WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'service') or contains(@class, 'card')]"))
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
-        time.sleep(3)  # انتظار إضافي للتأكد من التحميل الكامل
+        
+        # انتظار تحميل أي عنصر يحتوي على نص
+        WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'бесплатных') or contains(text(), 'подписчиков')]"))
+        )
+        
+        # وقت إضافي
+        time.sleep(TIMEOUT_CONFIG['page_load_extra'])
+        
+        send_telegram_log("✅ *تم تحميل الصفحة بنجاح*")
         return True
     except TimeoutException:
-        send_telegram_log("⚠️ *انتهت مهلة تحميل الخدمات*")
+        send_telegram_log("⚠️ *انتهت مهلة تحميل الصفحة*")
         return False
 
-def find_real_services(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+def find_all_services_simple(driver):
     """
-    البحث عن الخدمات الحقيقية فقط (تجاهل العناصر الوهمية)
+    طريقة بسيطة للبحث عن الخدمات باستخدام نصوص محددة
     """
-    # النصوص المطلوبة للخدمات الحقيقية
-    valid_keywords = [
-        "подписчиков", "лайков", "просмотров", "комментариев",
-        "подписчик", "лайк", "просмотр", "комментарий"
+    services = []
+    
+    # البحث عن أي عنصر يحتوي على كلمات مفتاحية
+    keywords = [
+        "бесплатных подписчиков",
+        "бесплатных лайков",
+        "бесплатных просмотров",
+        "бесплатных комментариев",
+        "подписчиков Тик Ток",
+        "подписчиков Ток",
+        "лайков в Ютубе"
     ]
     
-    # البحث عن جميع البطاقات
-    all_cards = driver.find_elements(By.XPATH, "//div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item')]")
-    
-    real_services = []
-    for card in all_cards:
+    for keyword in keywords:
         try:
-            card_text = card.text
-            # التحقق من أن البطاقة تحتوي على نص حقيقي
-            has_valid_text = any(keyword in card_text for keyword in valid_keywords)
-            # التحقق من وجود زر "Заказать"
-            has_order_button = False
-            try:
-                button = card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-                has_order_button = True
-            except:
-                pass
-            
-            if has_valid_text and has_order_button:
-                real_services.append(card)
+            elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{keyword}')]")
+            for element in elements:
+                try:
+                    # العثور على البطاقة الأب
+                    parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item') or contains(@class, 'block')]")
+                    if parent:
+                        services.append(parent)
+                except:
+                    # إذا لم نجد بطاقة، نأخذ العنصر نفسه
+                    services.append(element)
         except:
             continue
     
-    return real_services
-
-def find_service_by_position_enhanced(driver, position=6, timeout=TIMEOUT_CONFIG['element_primary']):
-    """
-    البحث عن الخدمة حسب ترتيبها في القائمة (فقط الخدمات الحقيقية)
-    """
-    # انتظار تحميل الصفحة
-    wait_for_services_to_load(driver, timeout)
-    
-    # الحصول على الخدمات الحقيقية فقط
-    real_services = find_real_services(driver)
-    
-    send_telegram_log(f"🔍 *تم العثور على {len(real_services)} خدمة حقيقية*")
-    
-    # عرض أول 10 خدمات للتشخيص
-    for idx, card in enumerate(real_services[:10]):
+    # إزالة التكرارات
+    unique_services = []
+    seen = set()
+    for service in services:
         try:
-            card_text = card.text.replace('\n', ' ').strip()
-            send_telegram_log(f"📋 *الخدمة {idx+1}:* `{card_text[:60]}...`")
+            service_id = id(service)
+            if service_id not in seen:
+                seen.add(service_id)
+                unique_services.append(service)
         except:
-            pass
+            continue
     
-    # اختيار الخدمة حسب الموقع
-    if len(real_services) >= position:
-        target_card = real_services[position - 1]  # 0-indexed
-        card_text = target_card.text.replace('\n', ' ').strip()
-        send_telegram_log(f"✅ *تم اختيار الخدمة رقم {position}:* `{card_text[:80]}...`")
-        
-        # البحث عن زر الطلب في البطاقة
-        try:
-            order_button = target_card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-            return order_button
-        except:
-            buttons = target_card.find_elements(By.TAG_NAME, "button")
-            if buttons:
-                return buttons[0]
-    
-    return None
+    return unique_services
 
-def find_service_by_exact_text(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+def find_services_by_xpath(driver):
     """
-    البحث عن الخدمة بالنص الدقيق
+    البحث عن الخدمات باستخدام XPath مختلف
     """
-    # النصوص المطلوبة
-    target_texts = [
-        "100 бесплатных подписчиков Ток",
-        "10 бесплатных лайков в Ютубе",
-        "10 бесплатных комментариев Ток"
+    services = []
+    
+    xpath_patterns = [
+        "//div[contains(@class, 'service')]",
+        "//div[contains(@class, 'card')]",
+        "//div[contains(@class, 'item')]",
+        "//div[contains(@class, 'block')]",
+        "//div[contains(@class, 'service-item')]",
+        "//div[contains(@class, 'service-card')]",
+        "//div[contains(@class, 'offer')]",
+        "//div[contains(@class, 'product')]",
+        "//div[contains(@style, 'service')]",
+        "//li[contains(@class, 'service')]"
     ]
     
-    try:
-        for text in target_texts:
+    for pattern in xpath_patterns:
+        try:
+            elements = driver.find_elements(By.XPATH, pattern)
+            for element in elements:
+                try:
+                    # التحقق من أن العنصر يحتوي على نص
+                    if element.text and len(element.text) > 10:
+                        services.append(element)
+                except:
+                    continue
+        except:
+            continue
+    
+    # إزالة التكرارات
+    unique_services = []
+    seen = set()
+    for service in services:
+        try:
+            service_id = id(service)
+            if service_id not in seen:
+                seen.add(service_id)
+                unique_services.append(service)
+        except:
+            continue
+    
+    return unique_services
+
+def find_tiktok_service_final(driver):
+    """
+    الطريقة النهائية للبحث عن خدمة TikTok متابعين
+    """
+    # أولاً: البحث عن النص الدقيق
+    target_texts = [
+        "100 бесплатных подписчиков Ток",
+        "10 бесплатных подписчиков Тик Ток",
+        "бесплатных подписчиков Тик Ток",
+        "подписчиков Тик Ток",
+        "подписчиков Ток"
+    ]
+    
+    for text in target_texts:
+        try:
             elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{text}')]")
             for element in elements:
                 try:
-                    parent_card = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card') or contains(@class, 'item')]")
-                    if parent_card:
-                        send_telegram_log(f"✅ *تم العثور على الخدمة:* `{text}`")
+                    # البحث عن زر الطلب
+                    try:
+                        # البحث عن زر في نفس المستوى أو الأعلى
+                        parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
+                        if parent:
+                            try:
+                                button = parent.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
+                                return button
+                            except:
+                                buttons = parent.find_elements(By.TAG_NAME, "button")
+                                if buttons:
+                                    return buttons[0]
+                    except:
+                        # إذا لم نجد بطاقة، نبحث عن زر قريب
                         try:
-                            order_button = parent_card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-                            return order_button
+                            button = element.find_element(By.XPATH, "./following::*[contains(text(), 'Заказать')][1]")
+                            return button
                         except:
-                            buttons = parent_card.find_elements(By.TAG_NAME, "button")
-                            if buttons:
-                                return buttons[0]
+                            pass
                 except:
                     continue
-    except:
-        pass
-    
-    return None
-
-def find_any_real_service(driver, timeout=TIMEOUT_CONFIG['element_primary']):
-    """
-    البحث عن أي خدمة حقيقية (كحل أخير)
-    """
-    real_services = find_real_services(driver)
-    
-    if real_services:
-        send_telegram_log(f"✅ *تم العثور على {len(real_services)} خدمة حقيقية*")
-        target_card = real_services[0]  # أول خدمة
-        try:
-            order_button = target_card.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
-            return order_button
-        except:
-            buttons = target_card.find_elements(By.TAG_NAME, "button")
-            if buttons:
-                return buttons[0]
-    
-    return None
-
-def find_link_input_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary']):
-    """
-    البحث المحسّن عن حقل إدخال الرابط
-    """
-    selectors = [
-        "//input[@type='url']",
-        "//input[contains(@placeholder, 'رابط')]",
-        "//input[contains(@placeholder, 'Ссылка')]",
-        "//input[contains(@placeholder, 'Link')]",
-        "//input[contains(@placeholder, 'https')]",
-        "//input[contains(@id, 'link') or contains(@id, 'url')]",
-        "//input[contains(@name, 'link') or contains(@name, 'url')]",
-        "//input[@type='text' and not(contains(@placeholder, 'Поиск')) and not(contains(@placeholder, 'بحث'))]",
-    ]
-    
-    for selector in selectors:
-        try:
-            elements = driver.find_elements(By.XPATH, selector)
-            for element in elements:
-                if element.is_displayed() and element.is_enabled():
-                    return element
         except:
             continue
     
+    # ثانياً: البحث عن أي خدمة TikTok
     try:
-        all_inputs = driver.find_elements(By.TAG_NAME, "input")
-        for inp in all_inputs:
+        elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Тик Ток') or contains(text(), 'Ток')]")
+        for element in elements:
             try:
-                if inp.is_displayed() and inp.is_enabled():
-                    input_type = inp.get_attribute("type")
-                    if input_type in ["text", "url", None]:
-                        return inp
+                parent = element.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
+                if parent:
+                    card_text = parent.text.lower()
+                    if "подписчиков" in card_text:
+                        try:
+                            button = parent.find_element(By.XPATH, ".//*[contains(text(), 'Заказать')]")
+                            return button
+                        except:
+                            buttons = parent.find_elements(By.TAG_NAME, "button")
+                            if buttons:
+                                return buttons[0]
+            except:
+                continue
+    except:
+        pass
+    
+    # ثالثاً: البحث عن أي زر "Заказать"
+    try:
+        buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
+        for button in buttons:
+            try:
+                if button.is_displayed() and button.is_enabled():
+                    # التحقق من أن الزر ليس في Instagram
+                    parent_text = ""
+                    try:
+                        parent = button.find_element(By.XPATH, "./ancestor::div[contains(@class, 'service') or contains(@class, 'card')]")
+                        if parent:
+                            parent_text = parent.text.lower()
+                    except:
+                        pass
+                    
+                    if "инстаграм" not in parent_text and "instagram" not in parent_text:
+                        return button
             except:
                 continue
     except:
@@ -220,16 +249,45 @@ def find_link_input_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary']):
     
     return None
 
-def find_submit_button_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary']):
+def find_link_input_final(driver):
     """
-    البحث المحسّن عن زر الإرسال النهائي
+    الطريقة النهائية للبحث عن حقل الرابط
+    """
+    selectors = [
+        "//input[@type='url']",
+        "//input[contains(@placeholder, 'Ссылка')]",
+        "//input[contains(@placeholder, 'Link')]",
+        "//input[contains(@placeholder, 'https')]",
+        "//input[@type='text']",
+        "//input",
+    ]
+    
+    for selector in selectors:
+        try:
+            elements = driver.find_elements(By.XPATH, selector)
+            for element in elements:
+                try:
+                    if element.is_displayed() and element.is_enabled():
+                        # التحقق من أن الحقل ليس حقل بحث
+                        placeholder = element.get_attribute("placeholder") or ""
+                        if "поиск" not in placeholder.lower() and "بحث" not in placeholder.lower():
+                            return element
+                except:
+                    continue
+        except:
+            continue
+    
+    return None
+
+def find_submit_button_final(driver):
+    """
+    الطريقة النهائية للبحث عن زر الإرسال
     """
     selectors = [
         "//button[@type='submit']",
-        "//*[contains(text(), 'Заказать') and not(contains(@class, 'disabled'))]",
-        "//*[contains(text(), 'طلب') and not(contains(@class, 'disabled'))]",
-        "//button[contains(@class, 'btn-primary') or contains(@class, 'btn-success')]",
-        "//button[contains(@class, 'order') or contains(@class, 'submit')]",
+        "//*[contains(text(), 'Заказать')]",
+        "//*[contains(text(), 'طلب')]",
+        "//button[contains(@class, 'btn')]",
         "//input[@type='submit']",
     ]
     
@@ -237,23 +295,13 @@ def find_submit_button_enhanced(driver, timeout=TIMEOUT_CONFIG['element_primary'
         try:
             elements = driver.find_elements(By.XPATH, selector)
             for element in elements:
-                if element.is_displayed() and element.is_enabled():
-                    return element
+                try:
+                    if element.is_displayed() and element.is_enabled():
+                        return element
+                except:
+                    continue
         except:
             continue
-    
-    try:
-        buttons = driver.find_elements(By.TAG_NAME, "button")
-        for btn in buttons:
-            try:
-                btn_text = btn.text.lower()
-                if any(word in btn_text for word in ["заказать", "طلب", "order", "submit"]):
-                    if btn.is_displayed() and btn.is_enabled():
-                        return btn
-            except:
-                continue
-    except:
-        pass
     
     return None
 
@@ -285,76 +333,66 @@ def run_smm_automation(target_link, loop_count):
             driver.set_page_load_timeout(TIMEOUT_CONFIG['page_load'])
             driver.get(TARGET_URL)
             
-            # انتظار تحميل الصفحة بشكل كامل
-            if not wait_for_services_to_load(driver):
-                send_telegram_log("⚠️ *الخدمات لم تتحمل بالكامل، جاري المحاولة مرة أخرى...*")
-                time.sleep(5)
+            # انتظار تحميل الصفحة
+            if not wait_for_page_load(driver):
+                send_telegram_log("⚠️ *الصفحة لم تتحمل بالكامل، جاري المحاولة...*")
+                time.sleep(10)
             
-            # 🎯 البحث عن الخدمة
+            # 🎯 البحث عن خدمة TikTok متابعين
             order_button = None
             
-            # محاولة 1: البحث عن الخدمة حسب الترتيب (الخدمة رقم 5 أو 6)
+            # محاولة 1: البحث المباشر عن الخدمة
             try:
-                send_telegram_log("🔍 *جاري البحث عن الخدمة رقم 5 (TikTok متابعين)...*")
-                order_button = find_service_by_position_enhanced(driver, position=5)
+                send_telegram_log("🔍 *جاري البحث عن خدمة TikTok متابعين...*")
+                order_button = find_tiktok_service_final(driver)
                 if order_button:
-                    send_telegram_log("✅ *تم اختيار الخدمة رقم 5 (TikTok متابعين)!*")
-            except:
+                    send_telegram_log("✅ *تم العثور على الخدمة المطلوبة!*")
+            except Exception as e:
+                send_telegram_log(f"⚠️ *خطأ في البحث: {str(e)[:50]}*")
                 order_button = None
             
-            # محاولة 2: البحث عن الخدمة رقم 6 (YouTube Likes)
+            # محاولة 2: البحث عن أي زر "Заказать" (كحل أخير)
             if not order_button:
                 try:
-                    send_telegram_log("🔍 *جاري البحث عن الخدمة رقم 6...*")
-                    order_button = find_service_by_position_enhanced(driver, position=6)
-                    if order_button:
-                        send_telegram_log("✅ *تم اختيار الخدمة رقم 6!*")
-                except:
-                    order_button = None
-            
-            # محاولة 3: البحث بالنص الدقيق
-            if not order_button:
-                try:
-                    send_telegram_log("🔍 *جاري البحث عن الخدمة بالنص الدقيق...*")
-                    order_button = find_service_by_exact_text(driver)
-                except:
-                    order_button = None
-            
-            # محاولة 4: البحث عن أي خدمة حقيقية (كحل أخير)
-            if not order_button:
-                try:
-                    send_telegram_log("🔍 *جاري البحث عن أي خدمة حقيقية...*")
-                    order_button = find_any_real_service(driver)
+                    send_telegram_log("🔍 *جاري البحث عن أي زر طلب...*")
+                    buttons = driver.find_elements(By.XPATH, "//*[contains(text(), 'Заказать')]")
+                    for btn in buttons:
+                        if btn.is_displayed() and btn.is_enabled():
+                            order_button = btn
+                            send_telegram_log("✅ *تم العثور على زر طلب*")
+                            break
                 except:
                     order_button = None
             
             if not order_button:
-                send_telegram_log("❌ *لم يتم العثور على أي خدمة حقيقية!*")
-                error_screenshot = f"error_no_service_{i+1}.png"
+                send_telegram_log("❌ *لم يتم العثور على أي خدمة!*")
+                
+                # حفظ صورة للخطأ
                 try:
+                    error_screenshot = f"error_{i+1}.png"
                     driver.save_screenshot(error_screenshot)
                     with open(error_screenshot, "rb") as photo:
-                        bot.send_photo(ADMIN_ID, photo, caption="❌ *لم نجد أي خدمة حقيقية!*")
+                        bot.send_photo(ADMIN_ID, photo, caption="❌ *لم نجد أي خدمة في الصفحة!*")
                     os.remove(error_screenshot)
                 except:
                     pass
+                
                 raise Exception("لم يتم العثور على أي خدمة")
             
-            # النقر على الخدمة المختارة
+            # النقر على الخدمة
             try:
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", order_button)
-                time.sleep(1)
+                time.sleep(2)
                 driver.execute_script("arguments[0].click();", order_button)
-                send_telegram_log("✅ *تم النقر على الخدمة المختارة*")
-            except Exception as e:
-                send_telegram_log(f"⚠️ *خطأ في النقر:* {str(e)[:50]}")
+                send_telegram_log("✅ *تم النقر على الخدمة*")
+            except:
                 try:
                     order_button.click()
                 except:
                     raise Exception("فشل النقر على الخدمة")
             
             # انتظار فتح النافذة الجديدة
-            time.sleep(5)
+            time.sleep(8)
             try:
                 if len(driver.window_handles) > 1:
                     driver.switch_to.window(driver.window_handles[-1])
@@ -376,59 +414,50 @@ def run_smm_automation(target_link, loop_count):
             time.sleep(10)
             
             # ✅ البحث عن حقل الرابط
-            link_input = find_link_input_enhanced(driver)
+            link_input = find_link_input_final(driver)
             
             if not link_input:
-                error_screenshot = f"error_no_input_{i+1}.png"
-                try:
-                    driver.save_screenshot(error_screenshot)
-                    with open(error_screenshot, "rb") as photo:
-                        bot.send_photo(ADMIN_ID, photo, caption="❌ *فشل العثور على حقل الرابط!*")
-                    os.remove(error_screenshot)
-                except:
-                    pass
-                raise Exception("لم يتم العثور على حقل إدخال الرابط.")
+                send_telegram_log("❌ *لم نجد حقل الرابط!*")
+                raise Exception("لم يتم العثور على حقل إدخال الرابط")
             
-            # حقن الرابط
+            # إدخال الرابط
             try:
                 driver.execute_script("arguments[0].value = arguments[1];", link_input, target_link)
                 driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", link_input)
-                send_telegram_log("✅ *تم إدخال الرابط بنجاح*")
-            except Exception as e:
-                send_telegram_log(f"⚠️ *خطأ في إدخال الرابط:* {str(e)[:50]}")
+                send_telegram_log("✅ *تم إدخال الرابط*")
+            except:
                 link_input.send_keys(target_link)
             
             time.sleep(3)
             
             # ✅ البحث عن زر الإرسال
-            final_submit = find_submit_button_enhanced(driver)
+            final_submit = find_submit_button_final(driver)
             
             if not final_submit:
-                raise Exception("فشل العثور على زر الإرسال.")
+                raise Exception("فشل العثور على زر الإرسال")
             
             # النقر على زر الإرسال
             try:
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", final_submit)
-                time.sleep(1)
+                time.sleep(2)
                 driver.execute_script("arguments[0].click();", final_submit)
                 send_telegram_log("✅ *تم النقر على زر الإرسال*")
-            except Exception as e:
-                send_telegram_log(f"⚠️ *خطأ في النقر على زر الإرسال:* {str(e)[:50]}")
+            except:
                 try:
                     final_submit.click()
                 except:
                     raise Exception("فشل النقر على زر الإرسال")
             
-            time.sleep(6)
+            time.sleep(8)
             
             # ✅ التأكد من نجاح الطلب
             try:
                 WebDriverWait(driver, TIMEOUT_CONFIG['success_check']).until(
                     EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'success') or contains(text(), 'успешно') or contains(text(), 'تم')]"))
                 )
-                send_telegram_log(f"✅ *[الوجبة {i+1}]: تم تأكيد نجاح الطلب!*")
-            except TimeoutException:
-                send_telegram_log(f"⚠️ *[الوجبة {i+1}]: تم الإرسال.*")
+                send_telegram_log(f"✅ *[الوجبة {i+1}]: نجاح!*")
+            except:
+                send_telegram_log(f"⚠️ *[الوجبة {i+1}]: تم الإرسال*")
             
             # لقطة شاشة
             try:
@@ -440,10 +469,10 @@ def run_smm_automation(target_link, loop_count):
             except:
                 pass
             
-            send_telegram_log(f"✅ *[الوجبة {i+1}]: اكتملت بنجاح*")
+            send_telegram_log(f"✅ *[الوجبة {i+1}]: اكتملت*")
             time.sleep(5)
             
-        send_telegram_log(f"🎉 *اكتملت جميع الوجبات بنجاح!*")
+        send_telegram_log(f"🎉 *اكتملت جميع الوجبات!*")
         
     except Exception as e:
         send_telegram_log(f"❌ *خطأ:* \n`{str(e)[:200]}`")
